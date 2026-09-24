@@ -31,7 +31,6 @@
       <div className={`vista-logo-frame ${className}`}>
         <svg viewBox="0 0 480 300" className="w-full h-full object-contain" xmlns="http://www.w3.org/2000/svg">
           <g transform="translate(15, 10)">
-            {/* Spiral dot accents */}
             <circle cx="115" cy="22" r="6" fill="#9d174d"/>
             <circle cx="95" cy="28" r="7" fill="#be185d"/>
             <circle cx="78" cy="38" r="8" fill="#db2777"/>
@@ -87,7 +86,6 @@
             <circle cx="318" cy="222" r="2.5" fill="#047857"/>
             <circle cx="352" cy="226" r="2" fill="#065f46"/>
           </g>
-          {/* VISTA typography */}
           <text x="150" y="152" fontFamily="'Plus Jakarta Sans', Arial, sans-serif" fontWeight="900" fontSize="98" fill="#111c4e" letterSpacing="0">VISTA</text>
           <text x="408" y="92" fontFamily="'Plus Jakarta Sans', Arial, sans-serif" fontWeight="800" fontSize="22" fill="#111c4e">TM</text>
           <text x="290" y="214" textAnchor="middle" fontFamily="'Plus Jakarta Sans', Arial, sans-serif" fontWeight="600" fontSize="32" fill="#0f172a" letterSpacing="1.5">Innovation @ work</text>
@@ -95,7 +93,7 @@
       </div>
     );
 
-    // Official 7 Host Personnel Directory (Zero contact phones or emails displayed)
+    // Official 7 Host Personnel Directory (Zero contact numbers/emails displayed)
     const OFFICIAL_EMPLOYEES = [
       { id: "VES-0101", name: "Magesh Kumar S", dept: "Indian Operations", role: "Head - Operations", access: "Management / Host", status: "Active" },
       { id: "VES-0102", name: "Mohan D", dept: "Operations", role: "Operations Lead", access: "Management / Host", status: "Active" },
@@ -108,12 +106,13 @@
 
     function App() {
       const queryParams = new URLSearchParams(window.location.search);
-      const isVisitorMode = queryParams.get('mode') === 'visitor' || !queryParams.get('portal');
-      
-      const [view, setView] = useState(isVisitorMode ? 'visitor' : 'staff');
+      const isVisitorParam = queryParams.get('mode') === 'visitor';
+      const isStaffParam = queryParams.get('portal') === 'staff';
+
+      const [view, setView] = useState(isStaffParam ? 'staff' : 'visitor');
       const [currentUser, setCurrentUser] = useState(null);
       const [activeTab, setActiveTab] = useState('dashboard');
-      
+
       // Login form state
       const [loginId, setLoginId] = useState('');
       const [loginPass, setLoginPass] = useState('');
@@ -127,6 +126,11 @@
       });
       const [registeredBadge, setRegisteredBadge] = useState(null);
 
+      // Storage monitoring (Quota 1024 MB)
+      const [usedStorageMB, setUsedStorageMB] = useState(50.4);
+      const [standeeModalOpen, setStandeeModalOpen] = useState(false);
+      const qrCanvasRef = useRef(null);
+
       // System records
       const [visitors, setVisitors] = useState([
         { id: "VIS-9401", name: "Karthikeyan R", phone: "9876543210", host: "Magesh Kumar S", dept: "Indian Operations", purpose: "Vendor Meeting", status: "Inside", checkIn: "10:15 AM", checkOut: "-" },
@@ -134,6 +138,9 @@
         { id: "VIS-9403", name: "Venkatesh Rao", phone: "9731098765", host: "Hariprasath", dept: "Frontdesk / Reception", purpose: "Facility Audit", status: "Inside", checkIn: "11:00 AM", checkOut: "-" }
       ]);
 
+      const storagePct = Math.round((usedStorageMB / 1024) * 100);
+
+      // Handle Authentication
       const handleLogin = (e) => {
         e.preventDefault();
         setLoginError('');
@@ -145,9 +152,9 @@
         } else if (id === 'admin' && pass === 'vista@admin') {
           setCurrentUser({ name: "System Admin", role: "System Administrator", level: "admin" });
         } else if (id === 'frontdesk' && pass === 'vista@gate') {
-          setCurrentUser({ name: "Front Desk Officer", role: "Front Desk & Security", level: "frontdesk" });
+          setCurrentUser({ name: "Front Desk Officer", role: "Front Desk & Security Operations", level: "frontdesk" });
         } else {
-          setLoginError('Invalid Username or Password. Please contact system administrator.');
+          setLoginError('Invalid credentials. Please verify your username and password.');
         }
       };
 
@@ -167,14 +174,45 @@
         };
         setVisitors([newBadge, ...visitors]);
         setRegisteredBadge(newBadge);
+        setUsedStorageMB(prev => Number((prev + 0.15).toFixed(2)));
         setStep(5);
+      };
+
+      // Generate Gate Standee QR
+      useEffect(() => {
+        if (standeeModalOpen && qrCanvasRef.current && window.QRCode) {
+          const gateUrl = "https://vistaesglobal-crypto.github.io/vista-VMS/?mode=visitor";
+          window.QRCode.toCanvas(qrCanvasRef.current, gateUrl, { width: 260, margin: 1 }, (err) => {
+            if (err) console.error(err);
+          });
+        }
+      }, [standeeModalOpen]);
+
+      // Excel export engine
+      const exportToExcel = () => {
+        if (!window.XLSX) return;
+        const data = visitors.map(v => ({
+          "Badge ID": v.id,
+          "Visitor Name": v.name,
+          "Phone": v.phone,
+          "Host Employee": v.host,
+          "Department": v.dept,
+          "Visit Purpose": v.purpose,
+          "Check-In Time": v.checkIn,
+          "Check-Out Time": v.checkOut,
+          "Status": v.status
+        }));
+        const ws = window.XLSX.utils.json_to_sheet(data);
+        const wb = window.XLSX.utils.book_new();
+        window.XLSX.utils.book_append_sheet(wb, ws, "Visitor Log");
+        window.XLSX.writeFile(wb, "VISTA_Visitor_Register_Export.xlsx");
       };
 
       return (
         <div className="min-h-screen flex flex-col">
-          {/* Top Bar: Hidden when in strictly isolated visitor mode */}
-          {!isVisitorMode && (
-            <header className="border-b border-slate-800 bg-slate-900/90 px-6 py-3 flex items-center justify-between">
+          {/* Top Bar: Hidden strictly when accessed via visitor scan mode */}
+          {!isVisitorParam && (
+            <header className="border-b border-slate-800 bg-slate-900/90 px-6 py-3 flex items-center justify-between sticky top-0 z-30">
               <div className="flex items-center gap-3">
                 <VistaLogo className="h-9" />
                 <div>
@@ -184,11 +222,24 @@
               </div>
 
               <div className="flex items-center gap-3">
+                <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-slate-800/80 rounded-lg text-xs border border-slate-700">
+                  <span className="text-slate-400">Storage:</span>
+                  <span className={`font-semibold ${storagePct >= 90 ? 'text-rose-400' : storagePct >= 75 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                    {usedStorageMB} MB ({storagePct}%)
+                  </span>
+                </div>
+
+                <button 
+                  onClick={() => setStandeeModalOpen(true)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700 transition"
+                >
+                  Entrance Standee QR
+                </button>
                 <button 
                   onClick={() => setView('visitor')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${view === 'visitor' ? 'bg-cyan-500 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
                 >
-                  Visitor Form Flow
+                  Visitor Registration
                 </button>
                 <button 
                   onClick={() => setView('staff')}
@@ -200,10 +251,10 @@
             </header>
           )}
 
-          {/* MAIN CONTENT AREA */}
+          {/* MAIN CONTENT CONTAINER */}
           <main className="flex-1 flex flex-col justify-center items-center p-4">
             
-            {/* 1. VISITOR SELF-REGISTRATION KIOSK */}
+            {/* 1. VISITOR REGISTRATION VIEW */}
             {view === 'visitor' && (
               <div className="w-full max-w-lg glass-card rounded-2xl p-6 sm:p-8 shadow-2xl border border-slate-800">
                 <div className="flex justify-center mb-6">
@@ -213,7 +264,7 @@
                 {step === 1 && (
                   <div className="text-center">
                     <h2 className="text-2xl font-bold text-white mb-2">Welcome to VISTA Campus</h2>
-                    <p className="text-sm text-slate-400 mb-6">Please complete self-registration to receive your touchless visitor badge.</p>
+                    <p className="text-sm text-slate-400 mb-6">Please complete self-registration to receive your instant digital visitor badge.</p>
                     
                     <div className="grid grid-cols-2 gap-4 mb-6">
                       <div className="bg-slate-800/60 p-4 rounded-xl border border-slate-700/50">
@@ -238,7 +289,7 @@
                 {step === 2 && (
                   <form onSubmit={(e) => { e.preventDefault(); setStep(3); }}>
                     <h3 className="text-lg font-bold text-white mb-1">Step 1: Contact Details</h3>
-                    <p className="text-xs text-slate-400 mb-4">Enter your details for campus security verification.</p>
+                    <p className="text-xs text-slate-400 mb-4">Enter your basic verification details.</p>
 
                     <div className="space-y-4">
                       <div>
@@ -262,7 +313,7 @@
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-slate-300 mb-1">Govt ID Last 4 Digits (Aadhaar / DL) *</label>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">Govt ID Last 4 Digits (Aadhaar / DL / Voter) *</label>
                         <input 
                           type="text" required maxLength="4"
                           value={formData.govtIdLast4} 
@@ -282,8 +333,8 @@
 
                 {step === 3 && (
                   <form onSubmit={handleVisitorSubmit}>
-                    <h3 className="text-lg font-bold text-white mb-1">Step 2: Host & Visit Purpose</h3>
-                    <p className="text-xs text-slate-400 mb-4">Select the designated employee you are visiting today.</p>
+                    <h3 className="text-lg font-bold text-white mb-1">Step 2: Host & Purpose</h3>
+                    <p className="text-xs text-slate-400 mb-4">Select the designated host personnel you are visiting.</p>
 
                     <div className="space-y-4">
                       <div>
@@ -357,7 +408,7 @@
                       </div>
 
                       <div className="text-center pt-3 border-t text-xs text-slate-500">
-                        Please show this digital pass to the security officer at the front gate.
+                        Please present this digital pass to the security officer at the gate.
                       </div>
                     </div>
 
@@ -372,11 +423,11 @@
               </div>
             )}
 
-            {/* 2. STAFF & SECURITY PORTAL */}
+            {/* 2. SECURITY & STAFF PORTAL */}
             {view === 'staff' && (
               <div className="w-full max-w-6xl">
                 {!currentUser ? (
-                  // Strictly locked login wall (No 1-click test buttons, no printed passwords)
+                  // Strictly locked login gate (Zero 1-click bypass buttons, zero exposed passwords)
                   <div className="max-w-md mx-auto glass-card rounded-2xl p-8 border border-slate-800 shadow-2xl">
                     <div className="flex justify-center mb-6">
                       <VistaLogo className="h-16" />
@@ -424,11 +475,11 @@
                     </form>
                   </div>
                 ) : (
-                  // Authorized Dashboard Interface
+                  // Authorized Staff Dashboard
                   <div className="glass-card rounded-2xl border border-slate-800 overflow-hidden shadow-2xl">
-                    <div className="bg-slate-900 px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+                    <div className="bg-slate-900 px-6 py-4 border-b border-slate-800 flex items-center justify-between flex-wrap gap-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white">
+                        <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white shadow-md">
                           {currentUser.name[0]}
                         </div>
                         <div>
@@ -437,18 +488,24 @@
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
                         <button 
                           onClick={() => setActiveTab('dashboard')} 
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${activeTab === 'dashboard' ? 'bg-cyan-500 text-white' : 'text-slate-400 hover:text-white'}`}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${activeTab === 'dashboard' ? 'bg-cyan-500 text-white' : 'text-slate-400 hover:text-white'}`}
                         >
                           Dashboard
                         </button>
                         <button 
                           onClick={() => setActiveTab('employees')} 
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${activeTab === 'employees' ? 'bg-cyan-500 text-white' : 'text-slate-400 hover:text-white'}`}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${activeTab === 'employees' ? 'bg-cyan-500 text-white' : 'text-slate-400 hover:text-white'}`}
                         >
-                          Host Personnel Master (7)
+                          Host Master (7)
+                        </button>
+                        <button 
+                          onClick={exportToExcel}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 hover:bg-emerald-600/30 transition"
+                        >
+                          Export Excel
                         </button>
                         <button 
                           onClick={() => { setCurrentUser(null); setLoginId(''); setLoginPass(''); }}
@@ -462,18 +519,27 @@
                     <div className="p-6">
                       {activeTab === 'dashboard' && (
                         <div>
-                          <h3 className="text-lg font-bold text-white mb-4">Active Campus Visitors</h3>
+                          <div className="flex justify-between items-center mb-4">
+                            <div>
+                              <h3 className="text-lg font-bold text-white">Active Campus Visitors</h3>
+                              <p className="text-xs text-slate-400">Current guests logged inside facility</p>
+                            </div>
+                            <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-semibold">
+                              {visitors.filter(v => v.status === 'Inside').length} On Premises
+                            </span>
+                          </div>
+
                           <div className="overflow-x-auto rounded-xl border border-slate-800">
                             <table className="w-full text-left text-xs">
                               <thead className="bg-slate-900/80 text-slate-400 uppercase border-b border-slate-800 font-semibold">
                                 <tr>
                                   <th className="p-3">Badge ID</th>
                                   <th className="p-3">Visitor Name</th>
-                                  <th className="p-3">Host Staff</th>
+                                  <th className="p-3">Host Personnel</th>
                                   <th className="p-3">Department</th>
                                   <th className="p-3">Check-In</th>
                                   <th className="p-3">Status</th>
-                                  <th className="p-3">Actions</th>
+                                  <th className="p-3">Action</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-800">
@@ -512,7 +578,7 @@
                           <div className="flex justify-between items-center mb-4">
                             <div>
                               <h3 className="text-lg font-bold text-white">Host Personnel Master Directory</h3>
-                              <p className="text-xs text-slate-400">Strictly filtered: Zero contact phones or emails exposed.</p>
+                              <p className="text-xs text-slate-400">Strictly filtered roster (contact details omitted).</p>
                             </div>
                             <span className="px-3 py-1 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-full text-xs font-semibold">Official 7-Host Roster</span>
                           </div>
@@ -556,7 +622,38 @@
             )}
           </main>
 
-          {/* Clean Footer with Discreet Staff Switcher for Gate Management */}
+          {/* Entrance Standee QR Modal */}
+          {standeeModalOpen && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-sm w-full p-6 text-center shadow-2xl relative">
+                <button 
+                  onClick={() => setStandeeModalOpen(false)}
+                  className="absolute top-4 right-4 text-slate-400 hover:text-white text-lg font-bold"
+                >
+                  ✕
+                </button>
+                <div className="flex justify-center mb-4">
+                  <VistaLogo className="h-10" />
+                </div>
+                <h3 className="text-base font-bold text-white">VISTA Engg Solutions Pvt Ltd</h3>
+                <p className="text-xs text-cyan-400 mb-4">Security Gate Registration Standee</p>
+                
+                <div className="bg-white p-3 rounded-xl inline-block shadow-inner mb-4">
+                  <canvas ref={qrCanvasRef}></canvas>
+                </div>
+
+                <p className="text-xs text-slate-400 mb-4">Scan using phone camera at reception or gate to self-register.</p>
+                <button 
+                  onClick={() => window.print()}
+                  className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl text-xs border border-slate-700"
+                >
+                  Print Standee
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Clean Footer */}
           <footer className="border-t border-slate-800/80 py-3 px-6 flex items-center justify-between text-xs text-slate-500">
             <div>© 2026 VISTA Engg Solutions Private Limited. All Rights Reserved.</div>
             <div className="flex items-center gap-2">
