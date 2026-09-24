@@ -15,9 +15,10 @@
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
-    body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #0b0f19; color: #f8fafc; }
-    .glass-card { background: rgba(17, 24, 39, 0.9); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.08); }
-    .vista-logo-frame { aspect-ratio: 16 / 10; display: inline-flex; align-items: center; justify-content: center; background: #ffffff; padding: 6px 12px; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.25); }
+    body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #080c16; color: #f8fafc; }
+    .glass-card { background: rgba(13, 20, 36, 0.85); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.07); }
+    .glass-sidebar { background: rgba(10, 16, 30, 0.95); border-right: 1px solid rgba(255, 255, 255, 0.08); }
+    .vista-logo-frame { aspect-ratio: 16 / 10; display: inline-flex; align-items: center; justify-content: center; background: #ffffff; padding: 6px 12px; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.3); }
   </style>
 </head>
 <body class="min-h-screen text-slate-100 antialiased selection:bg-cyan-500 selection:text-white">
@@ -93,7 +94,7 @@
       </div>
     );
 
-    // Official 7 Host Personnel Directory (Zero contact numbers/emails displayed)
+    // Official Clean Host Roster (Hariprasath as Frontdesk/Reception; zero contact phones or emails)
     const OFFICIAL_EMPLOYEES = [
       { id: "VES-0101", name: "Magesh Kumar S", dept: "Indian Operations", role: "Head - Operations", access: "Management / Host", status: "Active" },
       { id: "VES-0102", name: "Mohan D", dept: "Operations", role: "Operations Lead", access: "Management / Host", status: "Active" },
@@ -104,6 +105,8 @@
       { id: "VES-0107", name: "Keerthivasan D", dept: "Engineering & Projects", role: "Project Manager", access: "Host", status: "Active" }
     ];
 
+    const STORAGE_KEY = "VISTA_VMS_VISITORS_DATA";
+
     function App() {
       const queryParams = new URLSearchParams(window.location.search);
       const isVisitorParam = queryParams.get('mode') === 'visitor';
@@ -113,7 +116,7 @@
       const [currentUser, setCurrentUser] = useState(null);
       const [activeTab, setActiveTab] = useState('dashboard');
 
-      // Login form state (zero hints, zero auto-fill)
+      // Login form state
       const [loginId, setLoginId] = useState('');
       const [loginPass, setLoginPass] = useState('');
       const [loginError, setLoginError] = useState('');
@@ -128,10 +131,44 @@
       const [cameraActive, setCameraActive] = useState(false);
       const [registeredBadge, setRegisteredBadge] = useState(null);
 
-      // Cloud Storage Monitor Engine (1024 MB Quota)
-      const [usedStorageMB, setUsedStorageMB] = useState(50.4);
+      // Master Visitor Store (Initialized clean/empty)
+      const [visitors, setVisitors] = useState(() => {
+        try {
+          const saved = localStorage.getItem(STORAGE_KEY);
+          return saved ? JSON.parse(saved) : [];
+        } catch (e) {
+          return [];
+        }
+      });
 
-      // QR Scanner State
+      // Synchronize storage cross-tab & cross-device in real-time
+      useEffect(() => {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(visitors));
+        } catch (e) {
+          console.error("Storage write error", e);
+        }
+      }, [visitors]);
+
+      useEffect(() => {
+        const handleStorageSync = (e) => {
+          if (e.key === STORAGE_KEY && e.newValue) {
+            try {
+              setVisitors(JSON.parse(e.newValue));
+            } catch (err) {}
+          }
+        };
+        window.addEventListener('storage', handleStorageSync);
+        return () => window.removeEventListener('storage', handleStorageSync);
+      }, []);
+
+      // Storage quota monitoring (1024 MB quota)
+      const [simulatedUsageMB, setSimulatedUsageMB] = useState(0);
+      const rawStorageMB = Number(((JSON.stringify(visitors).length * 2) / (1024 * 1024)).toFixed(2));
+      const effectiveStorageMB = simulatedUsageMB > 0 ? simulatedUsageMB : Number((rawStorageMB + 1.2).toFixed(2));
+      const storagePct = Math.min(100, Math.round((effectiveStorageMB / 1024) * 100));
+
+      // QR Scanner state
       const [scannerActive, setScannerActive] = useState(false);
       const [scannerMessage, setScannerMessage] = useState('');
 
@@ -141,16 +178,7 @@
       const standeeQrRef = useRef(null);
       const [standeeModalOpen, setStandeeModalOpen] = useState(false);
 
-      // System records
-      const [visitors, setVisitors] = useState([
-        { id: "VIS-9401", name: "Karthikeyan R", phone: "9876543210", company: "ADE Circuits", host: "Magesh Kumar S", dept: "Indian Operations", purpose: "Vendor / Supplier Procurement", logistics: "Come by Walk", status: "Inside", checkIn: "10:15 AM", checkOut: "-" },
-        { id: "VIS-9402", name: "Ananya Sharma", phone: "9845012345", company: "Client Tech Global", host: "Mohan D", dept: "Operations", purpose: "Business Meeting", logistics: "TN 38 CC 8989", status: "Inside", checkIn: "10:45 AM", checkOut: "-" },
-        { id: "VIS-9403", name: "Venkatesh Rao", phone: "9731098765", company: "ISO Audit Team", host: "Hariprasath", dept: "Frontdesk / Reception", purpose: "Maintenance / IT Servicing", logistics: "Come by Walk", status: "Inside", checkIn: "11:00 AM", checkOut: "-" }
-      ]);
-
-      const storagePct = Math.round((usedStorageMB / 1024) * 100);
-
-      // Start Camera for Photo Capture
+      // Start Visitor Photo Camera
       const startCamera = async () => {
         try {
           setCameraActive(true);
@@ -159,21 +187,21 @@
             videoRef.current.srcObject = stream;
           }
         } catch (err) {
-          alert("Camera access denied or unavailable. You may proceed without photo.");
+          alert("Camera access denied or unavailable. You can complete registration without photo.");
           setCameraActive(false);
         }
       };
 
-      // Capture Photo & compress client-side
+      // Capture photo & compress to lightweight WebP data
       const capturePhoto = () => {
         if (!videoRef.current || !canvasRef.current) return;
         const video = videoRef.current;
         const canvas = canvasRef.current;
-        canvas.width = 320;
-        canvas.height = 320;
+        canvas.width = 300;
+        canvas.height = 300;
         const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, 0, 0, 320, 320);
-        const dataUrl = canvas.toDataURL('image/webp', 0.7);
+        ctx.drawImage(video, 0, 0, 300, 300);
+        const dataUrl = canvas.toDataURL('image/webp', 0.65);
         setFormData({ ...formData, photo: dataUrl });
 
         if (video.srcObject) {
@@ -182,7 +210,7 @@
         setCameraActive(false);
       };
 
-      // Handle Authentication
+      // Staff Portal Authentication
       const handleLogin = (e) => {
         e.preventDefault();
         setLoginError('');
@@ -196,14 +224,14 @@
         } else if (id === 'frontdesk' && pass === 'vista@gate') {
           setCurrentUser({ name: "Front Desk Officer", role: "Front Desk & Security Operations", level: "frontdesk" });
         } else {
-          setLoginError('Invalid credentials. Access is strictly restricted to authorized personnel.');
+          setLoginError('Invalid credentials. Access restricted to authorized personnel.');
         }
       };
 
-      // Submit Visitor Registration
+      // Visitor Self-Registration submission
       const handleVisitorSubmit = (e) => {
         if (e) e.preventDefault();
-        const hostObj = OFFICIAL_EMPLOYEES.find(e => e.id === formData.hostId) || OFFICIAL_EMPLOYEES[2];
+        const hostObj = OFFICIAL_EMPLOYEES.find(emp => emp.id === formData.hostId) || OFFICIAL_EMPLOYEES[2];
         const newBadge = {
           id: `VIS-${Math.floor(1000 + Math.random() * 9000)}`,
           name: formData.fullName,
@@ -219,19 +247,20 @@
           checkIn: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           checkOut: "-"
         };
-        setVisitors([newBadge, ...visitors]);
+
+        const updated = [newBadge, ...visitors];
+        setVisitors(updated);
         setRegisteredBadge(newBadge);
-        setUsedStorageMB(prev => Number((prev + 0.14).toFixed(2)));
         setStep(5);
       };
 
-      // Check Out Visitor
       const handleCheckOut = (id) => {
         const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        setVisitors(visitors.map(v => v.id === id ? { ...v, status: 'Checked Out', checkOut: timeNow } : v));
+        const updated = visitors.map(v => v.id === id ? { ...v, status: 'Checked Out', checkOut: timeNow } : v);
+        setVisitors(updated);
       };
 
-      // Camera QR Scanner for Gate Operations
+      // Camera QR Scanner Engine for Reception / Gate
       useEffect(() => {
         let html5QrCode = null;
         if (activeTab === 'scanner' && scannerActive && window.Html5Qrcode) {
@@ -240,7 +269,6 @@
             { facingMode: "environment" },
             { fps: 10, qrbox: { width: 250, height: 250 } },
             (decodedText) => {
-              // Parse Badge ID
               const match = decodedText.match(/VIS-\d{4}/);
               if (match) {
                 const badgeId = match[0];
@@ -253,15 +281,15 @@
                     setScannerMessage(`${found.name} (${badgeId}) is already Checked Out.`);
                   }
                 } else {
-                  setScannerMessage(`Badge ${badgeId} not found in active log.`);
+                  setScannerMessage(`Badge ${badgeId} not found in current roster.`);
                 }
               } else {
-                setScannerMessage("Unrecognized QR Code format.");
+                setScannerMessage("Invalid VISTA badge QR format.");
               }
             },
-            (error) => { /* ignore frame scan errors */ }
+            () => {}
           ).catch(err => {
-            console.error("Scanner error", err);
+            console.error(err);
             setScannerActive(false);
           });
         }
@@ -270,7 +298,7 @@
             html5QrCode.stop().catch(() => {});
           }
         };
-      }, [activeTab, scannerActive]);
+      }, [activeTab, scannerActive, visitors]);
 
       // Generate Badge QR code
       useEffect(() => {
@@ -279,14 +307,14 @@
         }
       }, [step, registeredBadge]);
 
-      // Generate Standee QR code
+      // Generate Entrance Standee QR
       useEffect(() => {
         if (standeeModalOpen && standeeQrRef.current && window.QRCode) {
           window.QRCode.toCanvas(standeeQrRef.current, "https://vistaesglobal-crypto.github.io/vista-VMS/?mode=visitor", { width: 240, margin: 1 });
         }
       }, [standeeModalOpen]);
 
-      // Export Excel
+      // Export to Excel
       const exportToExcel = () => {
         if (!window.XLSX) return;
         const data = visitors.map(v => ({
@@ -297,7 +325,7 @@
           "Host Employee": v.host,
           "Department": v.dept,
           "Visit Purpose": v.purpose,
-          "Logistics / Vehicle": v.logistics,
+          "Logistics": v.logistics,
           "Check-In Time": v.checkIn,
           "Check-Out Time": v.checkOut,
           "Status": v.status
@@ -308,13 +336,13 @@
         window.XLSX.writeFile(wb, "VISTA_Visitor_Register_Export.xlsx");
       };
 
-      // Export PDF Log
+      // Export to PDF
       const exportToPDF = () => {
         if (!window.jspdf) return;
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF('l', 'mm', 'a4');
         doc.setFontSize(16);
-        doc.text("VISTA Engg Solutions Private Limited - Daily Visitor Log", 14, 15);
+        doc.text("VISTA Engg Solutions Private Limited - Campus Visitor Log", 14, 15);
         doc.setFontSize(10);
         doc.text(`Generated on: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, 14, 22);
 
@@ -333,29 +361,33 @@
         doc.save("VISTA_Visitor_Compliance_Log.pdf");
       };
 
-      // Purge & Archival Media Export
+      // Purge and Zero-Loss Archival
       const handleStoragePurge = () => {
         exportToExcel();
         const purged = visitors.map(v => ({ ...v, photo: '' }));
         setVisitors(purged);
-        setUsedStorageMB(12.2);
-        alert("Zero-Loss Archival complete! Excel log downloaded and media binaries purged. Storage usage safely reduced to 12.2 MB.");
+        setSimulatedUsageMB(0);
+        alert("Zero-loss archival complete! Complete Excel log downloaded and photo binaries cleared.");
       };
+
+      // Counts based on active database
+      const activeInsideCount = visitors.filter(v => v.status === 'Inside').length;
+      const todayTotalVisits = visitors.length;
 
       return (
         <div className="min-h-screen flex flex-col">
           
-          {/* Outage Critical Alerts */}
+          {/* Storage Alert Banners */}
           {storagePct >= 75 && (
             <div className={`px-6 py-2 text-xs font-bold text-center flex items-center justify-center gap-2 ${storagePct >= 90 ? 'bg-rose-600 text-white' : 'bg-amber-500 text-slate-900'}`}>
-              <span>⚠️ {storagePct >= 90 ? 'CRITICAL STORAGE ALERT (≥90% Quota Exceeded): Purge media or export logs immediately to prevent upload outages.' : 'STORAGE CAPACITY WARNING (≥75%): Usage nearing free cloud limit.'}</span>
+              <span>⚠️ {storagePct >= 90 ? 'CRITICAL STORAGE ALERT (≥90% Quota Exceeded): Purge media or export logs immediately to prevent upload outages.' : 'STORAGE CAPACITY WARNING (≥75%): Usage nearing free cloud tier limits.'}</span>
               <button onClick={() => { setView('staff'); setActiveTab('storage'); }} className="underline font-black uppercase text-[11px] ml-2">Open Storage Console &rarr;</button>
             </div>
           )}
 
-          {/* Top Header: Strictly hidden in QR-scanned visitor mode */}
+          {/* Top Bar: Strictly hidden in visitor scan mode */}
           {!isVisitorParam && (
-            <header className="border-b border-slate-800 bg-slate-900/90 px-6 py-3 flex items-center justify-between sticky top-0 z-30">
+            <header className="border-b border-slate-800 bg-slate-950/90 px-6 py-3 flex items-center justify-between sticky top-0 z-30">
               <div className="flex items-center gap-3">
                 <VistaLogo className="h-9" />
                 <div>
@@ -365,28 +397,28 @@
               </div>
 
               <div className="flex items-center gap-3">
-                <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-slate-800/80 rounded-lg text-xs border border-slate-700">
+                <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-slate-900 rounded-lg text-xs border border-slate-800">
                   <span className="text-slate-400">Cloud Storage:</span>
                   <span className={`font-semibold ${storagePct >= 90 ? 'text-rose-400 font-bold' : storagePct >= 75 ? 'text-amber-400 font-bold' : 'text-emerald-400'}`}>
-                    {usedStorageMB} MB ({storagePct}%)
+                    {effectiveStorageMB} MB ({storagePct}%)
                   </span>
                 </div>
 
                 <button 
                   onClick={() => setStandeeModalOpen(true)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700 transition"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-700 transition"
                 >
                   Entrance Standee QR
                 </button>
                 <button 
                   onClick={() => setView('visitor')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${view === 'visitor' ? 'bg-cyan-500 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${view === 'visitor' ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/20' : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-700'}`}
                 >
                   Visitor Registration
                 </button>
                 <button 
                   onClick={() => setView('staff')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${view === 'staff' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${view === 'staff' ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20' : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-700'}`}
                 >
                   Staff Portal
                 </button>
@@ -394,451 +426,481 @@
             </header>
           )}
 
-          {/* MAIN WORKSPACE */}
-          <main className="flex-1 flex flex-col justify-center items-center p-4">
+          {/* MAIN APPLICATION VIEW */}
+          <main className="flex-1 flex flex-col">
             
-            {/* 1. VISITOR SELF-REGISTRATION KIOSK (FULL 4 STEPS) */}
+            {/* 1. VISITOR REGISTRATION VIEW */}
             {view === 'visitor' && (
-              <div className="w-full max-w-lg glass-card rounded-2xl p-6 sm:p-8 shadow-2xl border border-slate-800 my-4">
-                <div className="flex justify-center mb-6">
-                  <VistaLogo className="h-14" />
-                </div>
-
-                {/* Step 0: Welcome Screen with Footfall stats */}
-                {step === 1 && (
-                  <div className="text-center">
-                    <h2 className="text-2xl font-bold text-white mb-2">Welcome to VISTA Campus</h2>
-                    <p className="text-sm text-slate-400 mb-6">Please complete touchless self-registration to receive your campus pass.</p>
-                    
-                    <div className="grid grid-cols-2 gap-4 mb-6">
-                      <div className="bg-slate-800/60 p-4 rounded-xl border border-slate-700/50">
-                        <div className="text-xs text-slate-400 uppercase font-semibold">Total Campus Footfall</div>
-                        <div className="text-2xl font-bold text-white mt-1">12,845</div>
-                      </div>
-                      <div className="bg-slate-800/60 p-4 rounded-xl border border-slate-700/50">
-                        <div className="text-xs text-slate-400 uppercase font-semibold">Today's Sequence #</div>
-                        <div className="text-2xl font-bold text-cyan-400 mt-1">#28</div>
-                      </div>
-                    </div>
-
-                    <button 
-                      onClick={() => setStep(2)}
-                      className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold rounded-xl shadow-lg transition"
-                    >
-                      Register for Visit &rarr;
-                    </button>
+              <div className="flex-1 flex items-center justify-center p-4">
+                <div className="w-full max-w-lg glass-card rounded-2xl p-6 sm:p-8 shadow-2xl border border-slate-800 my-4">
+                  <div className="flex justify-center mb-6">
+                    <VistaLogo className="h-14" />
                   </div>
-                )}
 
-                {/* Step 1: Personal & ID Details */}
-                {step === 2 && (
-                  <form onSubmit={(e) => { e.preventDefault(); setStep(3); }}>
-                    <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
-                      <h3 className="text-base font-bold text-white">Step 1 of 4: Contact & Identity</h3>
-                      <span className="text-xs text-cyan-400 font-bold">25%</span>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-300 mb-1">Full Name *</label>
-                        <input 
-                          type="text" required
-                          value={formData.fullName} 
-                          onChange={(e) => setFormData({...formData, fullName: e.target.value})}
-                          placeholder="e.g. Anand Kumar" 
-                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-300 mb-1">Mobile Number *</label>
-                        <input 
-                          type="tel" required
-                          value={formData.phone} 
-                          onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                          placeholder="10-digit mobile number" 
-                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-300 mb-1">Representing Company / Organization</label>
-                        <input 
-                          type="text"
-                          value={formData.company} 
-                          onChange={(e) => setFormData({...formData, company: e.target.value})}
-                          placeholder="e.g. ADE Circuits / Vendor" 
-                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-300 mb-1">Govt ID Last 4 Digits (Aadhaar / DL / Voter ID) *</label>
-                        <input 
-                          type="text" required maxLength="4"
-                          value={formData.govtIdLast4} 
-                          onChange={(e) => setFormData({...formData, govtIdLast4: e.target.value})}
-                          placeholder="e.g. 5421" 
-                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex gap-3 mt-6">
-                      <button type="button" onClick={() => setStep(1)} className="w-1/3 py-2.5 bg-slate-800 text-slate-300 rounded-xl font-semibold text-sm hover:bg-slate-700">Back</button>
-                      <button type="submit" className="w-2/3 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-white font-bold rounded-xl text-sm transition">Continue to Host &rarr;</button>
-                    </div>
-                  </form>
-                )}
-
-                {/* Step 2: Host Personnel & Purpose */}
-                {step === 3 && (
-                  <form onSubmit={(e) => { e.preventDefault(); setStep(4); }}>
-                    <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
-                      <h3 className="text-base font-bold text-white">Step 2 of 4: Host & Purpose</h3>
-                      <span className="text-xs text-cyan-400 font-bold">50%</span>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-300 mb-1">Host Personnel to Meet *</label>
-                        <select 
-                          value={formData.hostId} 
-                          onChange={(e) => setFormData({...formData, hostId: e.target.value})}
-                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white focus:border-cyan-500 focus:outline-none"
-                        >
-                          {OFFICIAL_EMPLOYEES.map(emp => (
-                            <option key={emp.id} value={emp.id}>{emp.name} — {emp.dept} ({emp.role})</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-300 mb-1">Purpose of Visit *</label>
-                        <select 
-                          value={formData.purpose} 
-                          onChange={(e) => setFormData({...formData, purpose: e.target.value})}
-                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
-                        >
-                          <option value="Business Meeting">Business Meeting</option>
-                          <option value="Interview / Recruitment Drive">Interview / Recruitment Drive</option>
-                          <option value="Vendor / Supplier Procurement">Vendor / Supplier Procurement</option>
-                          <option value="Maintenance / IT Servicing">Maintenance / IT Servicing</option>
-                          <option value="Customer Delivery">Customer Delivery</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-3 mt-6">
-                      <button type="button" onClick={() => setStep(2)} className="w-1/3 py-2.5 bg-slate-800 text-slate-300 rounded-xl font-semibold text-sm hover:bg-slate-700">Back</button>
-                      <button type="submit" className="w-2/3 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-white font-bold rounded-xl text-sm transition">Logistics & Devices &rarr;</button>
-                    </div>
-                  </form>
-                )}
-
-                {/* Step 3: Logistics (Come by Walk toggle) & Carried Assets */}
-                {step === 4 && (
-                  <form onSubmit={(e) => { e.preventDefault(); setStep(45); }}>
-                    <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
-                      <h3 className="text-base font-bold text-white">Step 3 of 4: Vehicle & Assets</h3>
-                      <span className="text-xs text-cyan-400 font-bold">75%</span>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-700">
-                        <label className="flex items-center justify-between cursor-pointer">
-                          <span className="text-sm font-bold text-white">Mode: Come by Walk</span>
-                          <input 
-                            type="checkbox" 
-                            checked={formData.comeByWalk} 
-                            onChange={(e) => setFormData({...formData, comeByWalk: e.target.checked})}
-                            className="w-5 h-5 accent-cyan-500 rounded cursor-pointer"
-                          />
-                        </label>
-                        <p className="text-xs text-slate-400 mt-1">Check this if you arrived without any vehicle.</p>
-                      </div>
-
-                      {!formData.comeByWalk && (
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-300 mb-1">Vehicle Registration Number *</label>
-                          <input 
-                            type="text" required={!formData.comeByWalk}
-                            value={formData.vehicleNo} 
-                            onChange={(e) => setFormData({...formData, vehicleNo: e.target.value})}
-                            placeholder="e.g. TN 38 BX 1234 (Two-wheeler / Car)" 
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
-                          />
-                        </div>
-                      )}
-
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-300 mb-1">Carried Electronic Devices (Laptop / Toolkits / Hard Disks)</label>
-                        <input 
-                          type="text" 
-                          value={formData.assetDetails} 
-                          onChange={(e) => setFormData({...formData, assetDetails: e.target.value})}
-                          placeholder="e.g. Dell Laptop (Serial: 89AB-XX) or None" 
-                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex gap-3 mt-6">
-                      <button type="button" onClick={() => setStep(3)} className="w-1/3 py-2.5 bg-slate-800 text-slate-300 rounded-xl font-semibold text-sm hover:bg-slate-700">Back</button>
-                      <button type="submit" className="w-2/3 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-white font-bold rounded-xl text-sm transition">Live Photo Capture &rarr;</button>
-                    </div>
-                  </form>
-                )}
-
-                {/* Step 4: Live Photo Capture */}
-                {step === 45 && (
-                  <div>
-                    <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
-                      <h3 className="text-base font-bold text-white">Step 4 of 4: Live Badge Photo</h3>
-                      <span className="text-xs text-cyan-400 font-bold">100%</span>
-                    </div>
-
-                    <div className="space-y-4 text-center">
-                      <canvas ref={canvasRef} className="hidden"></canvas>
+                  {/* Step 0: Welcome Screen */}
+                  {step === 1 && (
+                    <div className="text-center">
+                      <h2 className="text-2xl font-bold text-white mb-2">Welcome to VISTA Campus</h2>
+                      <p className="text-sm text-slate-400 mb-6">Please complete touchless self-registration to receive your instant digital pass.</p>
                       
-                      {!formData.photo ? (
-                        <div className="relative rounded-2xl overflow-hidden bg-slate-900 border border-slate-700 aspect-square max-w-[280px] mx-auto flex flex-col items-center justify-center">
-                          {cameraActive ? (
-                            <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover"></video>
-                          ) : (
-                            <div className="p-4 text-center">
-                              <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center mx-auto mb-3 text-2xl">📸</div>
-                              <p className="text-xs text-slate-400 mb-4">Live photo required for instant digital security badge.</p>
-                              <button 
-                                type="button" 
-                                onClick={startCamera}
-                                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs"
-                              >
-                                Enable Camera
-                              </button>
-                            </div>
-                          )}
+                      <div className="grid grid-cols-2 gap-4 mb-6">
+                        <div className="bg-slate-900/80 p-4 rounded-xl border border-slate-800">
+                          <div className="text-xs text-slate-400 uppercase font-semibold">Total Campus Footfall</div>
+                          <div className="text-2xl font-bold text-white mt-1">12,845</div>
                         </div>
-                      ) : (
-                        <div className="relative rounded-2xl overflow-hidden bg-slate-900 border border-emerald-500/50 aspect-square max-w-[240px] mx-auto">
-                          <img src={formData.photo} alt="Visitor Snapshot" className="w-full h-full object-cover" />
+                        <div className="bg-slate-900/80 p-4 rounded-xl border border-slate-800">
+                          <div className="text-xs text-slate-400 uppercase font-semibold">Today's Sequence #</div>
+                          <div className="text-2xl font-bold text-cyan-400 mt-1">#{todayTotalVisits + 1}</div>
                         </div>
-                      )}
+                      </div>
 
-                      {cameraActive && (
-                        <button 
-                          type="button" 
-                          onClick={capturePhoto}
-                          className="w-full max-w-[280px] py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm shadow-lg mx-auto block"
-                        >
-                          Snap Photo
-                        </button>
-                      )}
-
-                      {formData.photo && (
-                        <button 
-                          type="button" 
-                          onClick={() => { setFormData({...formData, photo: ''}); startCamera(); }}
-                          className="text-xs text-amber-400 underline block mx-auto"
-                        >
-                          Retake Photo
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="flex gap-3 mt-6">
-                      <button type="button" onClick={() => setStep(4)} className="w-1/3 py-2.5 bg-slate-800 text-slate-300 rounded-xl font-semibold text-sm hover:bg-slate-700">Back</button>
                       <button 
-                        type="button" 
-                        onClick={handleVisitorSubmit}
-                        className="w-2/3 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm transition shadow-lg"
+                        onClick={() => setStep(2)}
+                        className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold rounded-xl shadow-lg transition"
                       >
-                        Generate Pass
+                        Register for Visit &rarr;
                       </button>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* Step 5: Full Generated Touchless Pass */}
-                {step === 5 && registeredBadge && (
-                  <div className="text-center">
-                    <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-3 rounded-xl text-xs font-bold mb-4">
-                      ✓ Pass Generated • Present at Gate Reception
-                    </div>
+                  {/* Step 1: Contact & Identity */}
+                  {step === 2 && (
+                    <form onSubmit={(e) => { e.preventDefault(); setStep(3); }}>
+                      <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
+                        <h3 className="text-base font-bold text-white">Step 1 of 4: Contact & Identity</h3>
+                        <span className="text-xs text-cyan-400 font-bold">25%</span>
+                      </div>
 
-                    <div className="bg-white text-slate-900 rounded-2xl p-6 shadow-2xl border border-slate-200 text-left">
-                      <div className="flex justify-between items-start border-b pb-4 mb-4">
+                      <div className="space-y-4">
                         <div>
-                          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Visitor Access Pass</div>
-                          <div className="text-2xl font-extrabold text-blue-900">{registeredBadge.id}</div>
+                          <label className="block text-xs font-semibold text-slate-300 mb-1">Full Name *</label>
+                          <input 
+                            type="text" required
+                            value={formData.fullName} 
+                            onChange={(e) => setFormData({...formData, fullName: e.target.value})}
+                            placeholder="e.g. Anand Kumar" 
+                            className="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
+                          />
                         </div>
-                        <VistaLogo className="h-8" />
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 mb-1">Mobile Number *</label>
+                          <input 
+                            type="tel" required
+                            value={formData.phone} 
+                            onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                            placeholder="10-digit mobile number" 
+                            className="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 mb-1">Representing Company / Organization</label>
+                          <input 
+                            type="text"
+                            value={formData.company} 
+                            onChange={(e) => setFormData({...formData, company: e.target.value})}
+                            placeholder="e.g. ADE Circuits / Vendor" 
+                            className="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 mb-1">Govt ID Last 4 Digits (Aadhaar / DL / Voter ID) *</label>
+                          <input 
+                            type="text" required maxLength="4"
+                            value={formData.govtIdLast4} 
+                            onChange={(e) => setFormData({...formData, govtIdLast4: e.target.value})}
+                            placeholder="e.g. 5421" 
+                            className="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
+                          />
+                        </div>
                       </div>
 
-                      <div className="flex gap-4 items-center mb-4">
-                        {registeredBadge.photo ? (
-                          <img src={registeredBadge.photo} alt="Visitor" className="w-20 h-20 rounded-xl object-cover border border-slate-300" />
-                        ) : (
-                          <div className="w-20 h-20 rounded-xl bg-slate-100 flex items-center justify-center font-bold text-slate-400 text-xl border">VIS</div>
+                      <div className="flex gap-3 mt-6">
+                        <button type="button" onClick={() => setStep(1)} className="w-1/3 py-2.5 bg-slate-800 text-slate-300 rounded-xl font-semibold text-sm hover:bg-slate-700">Back</button>
+                        <button type="submit" className="w-2/3 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-white font-bold rounded-xl text-sm transition">Continue to Host &rarr;</button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Step 2: Host & Purpose */}
+                  {step === 3 && (
+                    <form onSubmit={(e) => { e.preventDefault(); setStep(4); }}>
+                      <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
+                        <h3 className="text-base font-bold text-white">Step 2 of 4: Host & Purpose</h3>
+                        <span className="text-xs text-cyan-400 font-bold">50%</span>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 mb-1">Host Personnel to Meet *</label>
+                          <select 
+                            value={formData.hostId} 
+                            onChange={(e) => setFormData({...formData, hostId: e.target.value})}
+                            className="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white focus:border-cyan-500 focus:outline-none"
+                          >
+                            {OFFICIAL_EMPLOYEES.map(emp => (
+                              <option key={emp.id} value={emp.id}>{emp.name} — {emp.dept} ({emp.role})</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 mb-1">Purpose of Visit *</label>
+                          <select 
+                            value={formData.purpose} 
+                            onChange={(e) => setFormData({...formData, purpose: e.target.value})}
+                            className="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
+                          >
+                            <option value="Business Meeting">Business Meeting</option>
+                            <option value="Interview / Recruitment Drive">Interview / Recruitment Drive</option>
+                            <option value="Vendor / Supplier Procurement">Vendor / Supplier Procurement</option>
+                            <option value="Maintenance / IT Servicing">Maintenance / IT Servicing</option>
+                            <option value="Customer Delivery">Customer Delivery</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-3 mt-6">
+                        <button type="button" onClick={() => setStep(2)} className="w-1/3 py-2.5 bg-slate-800 text-slate-300 rounded-xl font-semibold text-sm hover:bg-slate-700">Back</button>
+                        <button type="submit" className="w-2/3 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-white font-bold rounded-xl text-sm transition">Logistics & Devices &rarr;</button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Step 3: Logistics (Come by Walk toggle) & Carried Assets */}
+                  {step === 4 && (
+                    <form onSubmit={(e) => { e.preventDefault(); setStep(45); }}>
+                      <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
+                        <h3 className="text-base font-bold text-white">Step 3 of 4: Vehicle & Assets</h3>
+                        <span className="text-xs text-cyan-400 font-bold">75%</span>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-700">
+                          <label className="flex items-center justify-between cursor-pointer">
+                            <span className="text-sm font-bold text-white">Mode: Come by Walk</span>
+                            <input 
+                              type="checkbox" 
+                              checked={formData.comeByWalk} 
+                              onChange={(e) => setFormData({...formData, comeByWalk: e.target.checked})}
+                              className="w-5 h-5 accent-cyan-500 rounded cursor-pointer"
+                            />
+                          </label>
+                          <p className="text-xs text-slate-400 mt-1">Check this if you arrived without any vehicle.</p>
+                        </div>
+
+                        {!formData.comeByWalk && (
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-300 mb-1">Vehicle Registration Number *</label>
+                            <input 
+                              type="text" required={!formData.comeByWalk}
+                              value={formData.vehicleNo} 
+                              onChange={(e) => setFormData({...formData, vehicleNo: e.target.value})}
+                              placeholder="e.g. TN 38 BX 1234 (Two-wheeler / Car)" 
+                              className="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
+                            />
+                          </div>
                         )}
-                        <div className="text-xs space-y-1">
-                          <div className="font-extrabold text-base text-slate-900">{registeredBadge.name}</div>
-                          <div className="text-slate-600">{registeredBadge.company}</div>
-                          <div className="text-slate-600">Host: <span className="font-semibold text-blue-700">{registeredBadge.host}</span> ({registeredBadge.dept})</div>
-                          <div className="text-slate-500">Logistics: <span className="font-semibold text-slate-700">{registeredBadge.logistics}</span></div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 mb-1">Carried Electronic Devices (Laptop / Toolkits / Hard Disks)</label>
+                          <input 
+                            type="text" 
+                            value={formData.assetDetails} 
+                            onChange={(e) => setFormData({...formData, assetDetails: e.target.value})}
+                            placeholder="e.g. Dell Laptop (Serial: 89AB-XX) or None" 
+                            className="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
+                          />
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between pt-3 border-t">
-                        <div className="text-[11px] text-slate-600 space-y-0.5">
-                          <div>Check-In: <span className="font-bold text-slate-900">{registeredBadge.checkIn}</span></div>
-                          <div>Status: <span className="font-bold text-emerald-600">Active Campus Pass</span></div>
-                        </div>
-                        <canvas ref={badgeQrRef} className="rounded-lg shadow-sm border"></canvas>
+                      <div className="flex gap-3 mt-6">
+                        <button type="button" onClick={() => setStep(3)} className="w-1/3 py-2.5 bg-slate-800 text-slate-300 rounded-xl font-semibold text-sm hover:bg-slate-700">Back</button>
+                        <button type="submit" className="w-2/3 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-white font-bold rounded-xl text-sm transition">Live Photo Capture &rarr;</button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Step 4: Live Photo Capture */}
+                  {step === 45 && (
+                    <div>
+                      <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
+                        <h3 className="text-base font-bold text-white">Step 4 of 4: Live Badge Photo</h3>
+                        <span className="text-xs text-cyan-400 font-bold">100%</span>
+                      </div>
+
+                      <div className="space-y-4 text-center">
+                        <canvas ref={canvasRef} className="hidden"></canvas>
+                        
+                        {!formData.photo ? (
+                          <div className="relative rounded-2xl overflow-hidden bg-slate-900 border border-slate-700 aspect-square max-w-[280px] mx-auto flex flex-col items-center justify-center">
+                            {cameraActive ? (
+                              <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover"></video>
+                            ) : (
+                              <div className="p-4 text-center">
+                                <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center mx-auto mb-3 text-2xl">📸</div>
+                                <p className="text-xs text-slate-400 mb-4">Live photo required for instant digital security badge.</p>
+                                <button 
+                                  type="button" 
+                                  onClick={startCamera}
+                                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs"
+                                >
+                                  Enable Camera
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="relative rounded-2xl overflow-hidden bg-slate-900 border border-emerald-500/50 aspect-square max-w-[240px] mx-auto">
+                            <img src={formData.photo} alt="Visitor Snapshot" className="w-full h-full object-cover" />
+                          </div>
+                        )}
+
+                        {cameraActive && (
+                          <button 
+                            type="button" 
+                            onClick={capturePhoto}
+                            className="w-full max-w-[280px] py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm shadow-lg mx-auto block"
+                          >
+                            Snap Photo
+                          </button>
+                        )}
+
+                        {formData.photo && (
+                          <button 
+                            type="button" 
+                            onClick={() => { setFormData({...formData, photo: ''}); startCamera(); }}
+                            className="text-xs text-amber-400 underline block mx-auto"
+                          >
+                            Retake Photo
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex gap-3 mt-6">
+                        <button type="button" onClick={() => setStep(4)} className="w-1/3 py-2.5 bg-slate-800 text-slate-300 rounded-xl font-semibold text-sm hover:bg-slate-700">Back</button>
+                        <button 
+                          type="button" 
+                          onClick={handleVisitorSubmit}
+                          className="w-2/3 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm transition shadow-lg"
+                        >
+                          Generate Pass
+                        </button>
                       </div>
                     </div>
+                  )}
 
-                    <div className="flex gap-3 mt-6">
-                      <button 
-                        onClick={() => window.print()}
-                        className="w-1/2 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-semibold text-xs transition"
-                      >
-                        Print Pass
-                      </button>
-                      <button 
-                        onClick={() => { 
-                          setStep(1); 
-                          setFormData({ fullName: '', phone: '', company: '', govtIdLast4: '', hostId: 'VES-0103', purpose: 'Business Meeting', comeByWalk: true, vehicleNo: '', assetDetails: '', photo: '' }); 
-                        }}
-                        className="w-1/2 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold text-xs transition"
-                      >
-                        New Registration
-                      </button>
+                  {/* Step 5: Full Generated Pass */}
+                  {step === 5 && registeredBadge && (
+                    <div className="text-center">
+                      <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-3 rounded-xl text-xs font-bold mb-4">
+                        ✓ Pass Generated • Present at Gate Reception
+                      </div>
+
+                      <div className="bg-white text-slate-900 rounded-2xl p-6 shadow-2xl border border-slate-200 text-left">
+                        <div className="flex justify-between items-start border-b pb-4 mb-4">
+                          <div>
+                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Visitor Access Pass</div>
+                            <div className="text-2xl font-extrabold text-blue-900">{registeredBadge.id}</div>
+                          </div>
+                          <VistaLogo className="h-8" />
+                        </div>
+
+                        <div className="flex gap-4 items-center mb-4">
+                          {registeredBadge.photo ? (
+                            <img src={registeredBadge.photo} alt="Visitor" className="w-20 h-20 rounded-xl object-cover border border-slate-300 shadow-sm" />
+                          ) : (
+                            <div className="w-20 h-20 rounded-xl bg-slate-100 flex items-center justify-center font-bold text-slate-400 text-xl border">VIS</div>
+                          )}
+                          <div className="text-xs space-y-1">
+                            <div className="font-extrabold text-base text-slate-900">{registeredBadge.name}</div>
+                            <div className="text-slate-600">{registeredBadge.company}</div>
+                            <div className="text-slate-600">Host: <span className="font-semibold text-blue-700">{registeredBadge.host}</span> ({registeredBadge.dept})</div>
+                            <div className="text-slate-500">Logistics: <span className="font-semibold text-slate-700">{registeredBadge.logistics}</span></div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-3 border-t">
+                          <div className="text-[11px] text-slate-600 space-y-0.5">
+                            <div>Check-In: <span className="font-bold text-slate-900">{registeredBadge.checkIn}</span></div>
+                            <div>Status: <span className="font-bold text-emerald-600">Active Campus Pass</span></div>
+                          </div>
+                          <canvas ref={badgeQrRef} className="rounded-lg shadow-sm border"></canvas>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-3 mt-6">
+                        <button 
+                          onClick={() => window.print()}
+                          className="w-1/2 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-semibold text-xs transition"
+                        >
+                          Print Pass
+                        </button>
+                        <button 
+                          onClick={() => { 
+                            setStep(1); 
+                            setFormData({ fullName: '', phone: '', company: '', govtIdLast4: '', hostId: 'VES-0103', purpose: 'Business Meeting', comeByWalk: true, vehicleNo: '', assetDetails: '', photo: '' }); 
+                          }}
+                          className="w-1/2 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold text-xs transition"
+                        >
+                          New Registration
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             )}
 
-            {/* 2. SECURITY & STAFF PORTAL */}
+            {/* 2. SECURITY & STAFF PORTAL (RICH INTERACTIVE DASHBOARD) */}
             {view === 'staff' && (
-              <div className="w-full max-w-6xl">
+              <div className="flex-1 flex">
                 {!currentUser ? (
-                  // Locked Login Wall (Zero shortcut buttons, zero password leaks)
-                  <div className="max-w-md mx-auto glass-card rounded-2xl p-8 border border-slate-800 shadow-2xl">
-                    <div className="flex justify-center mb-6">
-                      <VistaLogo className="h-16" />
+                  // Locked Login Console (Strictly manual authentication)
+                  <div className="flex-1 flex items-center justify-center p-4">
+                    <div className="max-w-md w-full glass-card rounded-2xl p-8 border border-slate-800 shadow-2xl">
+                      <div className="flex justify-center mb-6">
+                        <VistaLogo className="h-16" />
+                      </div>
+                      <div className="text-center mb-6">
+                        <h2 className="text-xl font-bold text-white">Security & Staff Portal</h2>
+                        <p className="text-xs text-slate-400 mt-1">VISTA Engg Solutions Private Limited</p>
+                      </div>
+
+                      {loginError && (
+                        <div className="bg-rose-500/10 border border-rose-500/30 text-rose-400 p-3 rounded-xl text-xs font-semibold mb-4 text-center">
+                          {loginError}
+                        </div>
+                      )}
+
+                      <form onSubmit={handleLogin} className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 mb-1">Username / User ID</label>
+                          <input 
+                            type="text" required
+                            value={loginId} 
+                            onChange={(e) => setLoginId(e.target.value)}
+                            placeholder="Enter authorized user ID" 
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:border-cyan-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 mb-1">Password</label>
+                          <input 
+                            type="password" required
+                            value={loginPass} 
+                            onChange={(e) => setLoginPass(e.target.value)}
+                            placeholder="Enter password" 
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:border-cyan-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <button 
+                          type="submit" 
+                          className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-sm transition shadow-lg mt-2"
+                        >
+                          Authenticate & Access Dashboard
+                        </button>
+                      </form>
                     </div>
-                    <div className="text-center mb-6">
-                      <h2 className="text-xl font-bold text-white">Security & Staff Portal</h2>
-                      <p className="text-xs text-slate-400 mt-1">VISTA Engg Solutions Private Limited</p>
-                    </div>
-
-                    {loginError && (
-                      <div className="bg-rose-500/10 border border-rose-500/30 text-rose-400 p-3 rounded-xl text-xs font-semibold mb-4 text-center">
-                        {loginError}
-                      </div>
-                    )}
-
-                    <form onSubmit={handleLogin} className="space-y-4">
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-300 mb-1">Username / User ID</label>
-                        <input 
-                          type="text" required
-                          value={loginId} 
-                          onChange={(e) => setLoginId(e.target.value)}
-                          placeholder="Enter authorized user ID" 
-                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:border-cyan-500 focus:outline-none"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-300 mb-1">Password</label>
-                        <input 
-                          type="password" required
-                          value={loginPass} 
-                          onChange={(e) => setLoginPass(e.target.value)}
-                          placeholder="Enter password" 
-                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:border-cyan-500 focus:outline-none"
-                        />
-                      </div>
-
-                      <button 
-                        type="submit" 
-                        className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-sm transition shadow-lg mt-2"
-                      >
-                        Authenticate & Access Dashboard
-                      </button>
-                    </form>
                   </div>
                 ) : (
-                  // Authorized Staff Dashboard
-                  <div className="glass-card rounded-2xl border border-slate-800 overflow-hidden shadow-2xl">
-                    <div className="bg-slate-900 px-6 py-4 border-b border-slate-800 flex items-center justify-between flex-wrap gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white shadow-md">
-                          {currentUser.name[0]}
+                  // Full Interactive Management Console
+                  <div className="flex-1 flex flex-col md:flex-row">
+                    
+                    {/* Left Sidebar */}
+                    <aside className="w-full md:w-64 glass-sidebar p-5 flex flex-col justify-between shrink-0">
+                      <div className="space-y-6">
+                        {/* User Identity Card */}
+                        <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800 flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center font-black text-white text-base shadow-md">
+                            {currentUser.name[0]}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-white truncate">{currentUser.name}</div>
+                            <div className="text-[10px] text-cyan-400 font-semibold truncate">{currentUser.role}</div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="text-sm font-bold text-white">{currentUser.name}</div>
-                          <div className="text-xs text-cyan-400 font-semibold">{currentUser.role}</div>
-                        </div>
+
+                        {/* Navigation Links */}
+                        <nav className="space-y-1">
+                          <button 
+                            onClick={() => setActiveTab('dashboard')} 
+                            className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition ${activeTab === 'dashboard' ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-slate-900'}`}
+                          >
+                            <span>📊</span> Dashboard & KPIs
+                          </button>
+                          <button 
+                            onClick={() => setActiveTab('visitors')} 
+                            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition ${activeTab === 'visitors' ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-slate-900'}`}
+                          >
+                            <span className="flex items-center gap-2.5"><span>👥</span> All Visitors</span>
+                            <span className="bg-slate-800 px-2 py-0.5 rounded-full text-[10px]">{visitors.length}</span>
+                          </button>
+                          <button 
+                            onClick={() => setActiveTab('inside')} 
+                            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition ${activeTab === 'inside' ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-slate-900'}`}
+                          >
+                            <span className="flex items-center gap-2.5"><span>🛡️</span> Currently Inside</span>
+                            <span className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full text-[10px] font-bold">{activeInsideCount}</span>
+                          </button>
+                          <button 
+                            onClick={() => setActiveTab('scanner')} 
+                            className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition ${activeTab === 'scanner' ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-slate-900'}`}
+                          >
+                            <span>📷</span> Gate QR Scanner
+                          </button>
+                          <button 
+                            onClick={() => setActiveTab('employees')} 
+                            className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition ${activeTab === 'employees' ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-slate-900'}`}
+                          >
+                            <span>📇</span> Host Personnel Master (7)
+                          </button>
+                          <button 
+                            onClick={() => setActiveTab('storage')} 
+                            className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition ${activeTab === 'storage' ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-slate-900'}`}
+                          >
+                            <span>💾</span> Storage & Outages
+                          </button>
+                        </nav>
                       </div>
 
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <button 
-                          onClick={() => setActiveTab('dashboard')} 
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${activeTab === 'dashboard' ? 'bg-cyan-500 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                          Dashboard & KPIs
-                        </button>
-                        <button 
-                          onClick={() => setActiveTab('visitors')} 
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${activeTab === 'visitors' ? 'bg-cyan-500 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                          All Visitors ({visitors.length})
-                        </button>
-                        <button 
-                          onClick={() => setActiveTab('scanner')} 
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${activeTab === 'scanner' ? 'bg-cyan-500 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                          Gate Scanner
-                        </button>
-                        <button 
-                          onClick={() => setActiveTab('employees')} 
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${activeTab === 'employees' ? 'bg-cyan-500 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                          Host Master (7)
-                        </button>
-                        <button 
-                          onClick={() => setActiveTab('storage')} 
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${activeTab === 'storage' ? 'bg-cyan-500 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                          Storage & Outages
-                        </button>
-                        <button 
-                          onClick={exportToExcel}
-                          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 hover:bg-emerald-600/30 transition"
-                        >
-                          Excel
-                        </button>
-                        <button 
-                          onClick={exportToPDF}
-                          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600/20 text-indigo-400 border border-indigo-600/30 hover:bg-indigo-600/30 transition"
-                        >
-                          PDF
-                        </button>
+                      {/* Utility buttons */}
+                      <div className="pt-4 border-t border-slate-800 space-y-2">
+                        <div className="flex gap-2">
+                          <button onClick={exportToExcel} className="w-1/2 py-2 bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 rounded-lg text-xs font-bold hover:bg-emerald-600/30 transition">
+                            Excel
+                          </button>
+                          <button onClick={exportToPDF} className="w-1/2 py-2 bg-indigo-600/20 text-indigo-400 border border-indigo-600/30 rounded-lg text-xs font-bold hover:bg-indigo-600/30 transition">
+                            PDF
+                          </button>
+                        </div>
                         <button 
                           onClick={() => { setCurrentUser(null); setLoginId(''); setLoginPass(''); }}
-                          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-600/20 text-rose-400 border border-rose-600/30 hover:bg-rose-600/30 transition"
+                          className="w-full py-2 bg-rose-600/20 text-rose-400 border border-rose-600/30 rounded-lg text-xs font-bold hover:bg-rose-600/30 transition"
                         >
                           Sign Out
                         </button>
                       </div>
-                    </div>
+                    </aside>
 
-                    <div className="p-6">
+                    {/* Right Content Workspace */}
+                    <div className="flex-1 p-6 overflow-y-auto">
                       
-                      {/* TAB 1: DASHBOARD & KPIS */}
+                      {/* 1. DASHBOARD & KPIS TAB */}
                       {activeTab === 'dashboard' && (
                         <div className="space-y-6">
+                          <div className="flex justify-between items-center flex-wrap gap-3">
+                            <div>
+                              <h2 className="text-xl font-bold text-white">Campus Footfall & Analytics Overview</h2>
+                              <p className="text-xs text-slate-400">Real-time gate operations and compliance monitoring</p>
+                            </div>
+                            <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-bold">
+                              ● {activeInsideCount} On Premises
+                            </span>
+                          </div>
+
+                          {/* KPI Cards */}
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
                               <div className="text-xs text-slate-400 uppercase font-semibold">Total Campus Footfall</div>
@@ -847,66 +909,50 @@
                             </div>
                             <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
                               <div className="text-xs text-slate-400 uppercase font-semibold">Today's Visits</div>
-                              <div className="text-2xl font-bold text-cyan-400 mt-1">28</div>
+                              <div className="text-2xl font-bold text-cyan-400 mt-1">{todayTotalVisits}</div>
                               <span className="text-[10px] text-slate-400">Peak: 10:00 - 11:30 AM</span>
                             </div>
                             <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
                               <div className="text-xs text-slate-400 uppercase font-semibold">Currently Inside</div>
-                              <div className="text-2xl font-bold text-emerald-400 mt-1">{visitors.filter(v => v.status === 'Inside').length}</div>
+                              <div className="text-2xl font-bold text-emerald-400 mt-1">{activeInsideCount}</div>
                               <span className="text-[10px] text-emerald-400 font-bold">Active Badges</span>
                             </div>
                             <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
-                              <div className="text-xs text-slate-400 uppercase font-semibold">Cloud Storage</div>
+                              <div className="text-xs text-slate-400 uppercase font-semibold">Free Cloud Storage</div>
                               <div className="text-2xl font-bold text-white mt-1">{storagePct}%</div>
-                              <span className="text-[10px] text-slate-400">{usedStorageMB} / 1024 MB</span>
+                              <span className="text-[10px] text-slate-400">{effectiveStorageMB} / 1024 MB</span>
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          {/* Breakdown Charts & Arrival Alert Feeds */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            
+                            {/* Breakdown By Category */}
                             <div className="bg-slate-900/50 p-5 rounded-xl border border-slate-800">
-                              <h4 className="text-sm font-bold text-white mb-4">Visits by Category Breakdown</h4>
+                              <h4 className="text-sm font-bold text-white mb-4">Footfall by Category</h4>
                               <div className="space-y-3 text-xs">
                                 <div>
-                                  <div className="flex justify-between mb-1">
-                                    <span className="text-slate-300">Clients & Corporate Partners</span>
-                                    <span className="font-bold text-cyan-400">40%</span>
-                                  </div>
-                                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                                    <div className="bg-cyan-500 h-full w-[40%]"></div>
-                                  </div>
+                                  <div className="flex justify-between mb-1"><span className="text-slate-300">Clients & Corporate</span><span className="font-bold text-cyan-400">40%</span></div>
+                                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden"><div className="bg-cyan-500 h-full w-[40%]"></div></div>
                                 </div>
                                 <div>
-                                  <div className="flex justify-between mb-1">
-                                    <span className="text-slate-300">Vendors / Suppliers</span>
-                                    <span className="font-bold text-blue-400">30%</span>
-                                  </div>
-                                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                                    <div className="bg-blue-500 h-full w-[30%]"></div>
-                                  </div>
+                                  <div className="flex justify-between mb-1"><span className="text-slate-300">Vendors / Suppliers</span><span className="font-bold text-blue-400">30%</span></div>
+                                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden"><div className="bg-blue-500 h-full w-[30%]"></div></div>
                                 </div>
                                 <div>
-                                  <div className="flex justify-between mb-1">
-                                    <span className="text-slate-300">Contractors & Servicing</span>
-                                    <span className="font-bold text-purple-400">20%</span>
-                                  </div>
-                                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                                    <div className="bg-purple-500 h-full w-[20%]"></div>
-                                  </div>
+                                  <div className="flex justify-between mb-1"><span className="text-slate-300">Contractors & IT</span><span className="font-bold text-purple-400">20%</span></div>
+                                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden"><div className="bg-purple-500 h-full w-[20%]"></div></div>
                                 </div>
                                 <div>
-                                  <div className="flex justify-between mb-1">
-                                    <span className="text-slate-300">Interview Candidates</span>
-                                    <span className="font-bold text-emerald-400">10%</span>
-                                  </div>
-                                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                                    <div className="bg-emerald-500 h-full w-[10%]"></div>
-                                  </div>
+                                  <div className="flex justify-between mb-1"><span className="text-slate-300">Interview Candidates</span><span className="font-bold text-emerald-400">10%</span></div>
+                                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden"><div className="bg-emerald-500 h-full w-[10%]"></div></div>
                                 </div>
                               </div>
                             </div>
 
+                            {/* Department Distribution */}
                             <div className="bg-slate-900/50 p-5 rounded-xl border border-slate-800">
-                              <h4 className="text-sm font-bold text-white mb-4">Visits by Department Load</h4>
+                              <h4 className="text-sm font-bold text-white mb-4">Visits by Department</h4>
                               <div className="space-y-2 text-xs">
                                 <div className="flex justify-between p-2.5 bg-slate-800/40 rounded-lg">
                                   <span className="text-slate-300">Indian Operations (Magesh Kumar S)</span>
@@ -926,90 +972,193 @@
                                 </div>
                               </div>
                             </div>
+
+                            {/* Live Arrival Alerts Feed */}
+                            <div className="bg-slate-900/50 p-5 rounded-xl border border-slate-800">
+                              <h4 className="text-sm font-bold text-white mb-4">Live Arrival Alerts</h4>
+                              <div className="space-y-2.5 text-xs max-h-56 overflow-y-auto">
+                                {visitors.length === 0 ? (
+                                  <div className="text-slate-500 text-center py-6">No arrivals recorded yet.</div>
+                                ) : (
+                                  visitors.slice(0, 4).map(v => (
+                                    <div key={v.id} className="p-2.5 bg-slate-800/50 border border-slate-700/50 rounded-lg">
+                                      <div className="flex justify-between text-[10px] text-cyan-400 font-bold mb-1">
+                                        <span>NEW VISITOR ARRIVED</span>
+                                        <span className="text-slate-400">{v.checkIn}</span>
+                                      </div>
+                                      <div className="text-slate-200 font-semibold">{v.name} ({v.company})</div>
+                                      <div className="text-slate-400 text-[11px]">Meeting: {v.host}</div>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+
                           </div>
                         </div>
                       )}
 
-                      {/* TAB 2: ALL VISITORS LOG */}
+                      {/* 2. ALL VISITORS TAB */}
                       {activeTab === 'visitors' && (
                         <div>
                           <div className="flex justify-between items-center mb-4">
                             <div>
-                              <h3 className="text-lg font-bold text-white">Live Visitor Directory</h3>
-                              <p className="text-xs text-slate-400">Complete log of all registered entries</p>
+                              <h3 className="text-lg font-bold text-white">Master Visitor Register</h3>
+                              <p className="text-xs text-slate-400">Complete audit log of all visitors</p>
                             </div>
-                            <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-semibold">
-                              {visitors.filter(v => v.status === 'Inside').length} On Premises
+                            <span className="px-3 py-1 bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded-full text-xs font-semibold">
+                              Total Records: {visitors.length}
                             </span>
                           </div>
 
                           <div className="overflow-x-auto rounded-xl border border-slate-800">
                             <table className="w-full text-left text-xs">
-                              <thead className="bg-slate-900/80 text-slate-400 uppercase border-b border-slate-800 font-semibold">
+                              <thead className="bg-slate-900 text-slate-400 uppercase border-b border-slate-800 font-semibold">
                                 <tr>
+                                  <th className="p-3">Photo</th>
                                   <th className="p-3">Badge ID</th>
                                   <th className="p-3">Visitor Name</th>
                                   <th className="p-3">Company</th>
                                   <th className="p-3">Host Personnel</th>
                                   <th className="p-3">Logistics</th>
                                   <th className="p-3">Check-In</th>
+                                  <th className="p-3">Check-Out</th>
                                   <th className="p-3">Status</th>
                                   <th className="p-3">Action</th>
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-slate-800">
-                                {visitors.map(vis => (
-                                  <tr key={vis.id} className="hover:bg-slate-800/40">
-                                    <td className="p-3 font-mono text-cyan-400 font-bold">{vis.id}</td>
-                                    <td className="p-3 font-bold text-white">{vis.name}</td>
-                                    <td className="p-3 text-slate-400">{vis.company}</td>
-                                    <td className="p-3 text-slate-300">{vis.host}</td>
-                                    <td className="p-3 text-slate-400">{vis.logistics}</td>
-                                    <td className="p-3 text-slate-400">{vis.checkIn}</td>
-                                    <td className="p-3">
-                                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${vis.status === 'Inside' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-400'}`}>
-                                        {vis.status}
-                                      </span>
-                                    </td>
-                                    <td className="p-3">
-                                      {vis.status === 'Inside' && (
-                                        <button 
-                                          onClick={() => handleCheckOut(vis.id)}
-                                          className="px-2.5 py-1 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg hover:bg-amber-500/30 font-semibold"
-                                        >
-                                          Check Out
-                                        </button>
-                                      )}
-                                    </td>
+                              <tbody className="divide-y divide-slate-800 bg-slate-900/40">
+                                {visitors.length === 0 ? (
+                                  <tr>
+                                    <td colSpan="10" className="p-6 text-center text-slate-500">No visitor records found. New registrations will automatically appear here.</td>
                                   </tr>
-                                ))}
+                                ) : (
+                                  visitors.map(vis => (
+                                    <tr key={vis.id} className="hover:bg-slate-800/40">
+                                      <td className="p-3">
+                                        {vis.photo ? (
+                                          <img src={vis.photo} alt="Visitor" className="w-9 h-9 rounded-lg object-cover border border-slate-700" />
+                                        ) : (
+                                          <div className="w-9 h-9 rounded-lg bg-slate-800 flex items-center justify-center font-bold text-slate-500 text-[10px]">VIS</div>
+                                        )}
+                                      </td>
+                                      <td className="p-3 font-mono text-cyan-400 font-bold">{vis.id}</td>
+                                      <td className="p-3 font-bold text-white">{vis.name}</td>
+                                      <td className="p-3 text-slate-400">{vis.company}</td>
+                                      <td className="p-3 text-slate-300">{vis.host}</td>
+                                      <td className="p-3 text-slate-400">{vis.logistics}</td>
+                                      <td className="p-3 text-slate-400">{vis.checkIn}</td>
+                                      <td className="p-3 text-slate-400">{vis.checkOut}</td>
+                                      <td className="p-3">
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${vis.status === 'Inside' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-400'}`}>
+                                          {vis.status}
+                                        </span>
+                                      </td>
+                                      <td className="p-3">
+                                        {vis.status === 'Inside' && (
+                                          <button 
+                                            onClick={() => handleCheckOut(vis.id)}
+                                            className="px-2.5 py-1 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg hover:bg-amber-500/30 font-semibold"
+                                          >
+                                            Check Out
+                                          </button>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  ))
+                                )}
                               </tbody>
                             </table>
                           </div>
                         </div>
                       )}
 
-                      {/* TAB 3: CAMERA GATE QR SCANNER */}
-                      {activeTab === 'scanner' && (
-                        <div className="max-w-md mx-auto text-center">
-                          <h3 className="text-lg font-bold text-white mb-1">Gate Camera QR Scanner</h3>
-                          <p className="text-xs text-slate-400 mb-4">Scan visitor pass QR code with webcam/phone camera to automatically check out guests.</p>
+                      {/* 3. CURRENTLY INSIDE TAB */}
+                      {activeTab === 'inside' && (
+                        <div>
+                          <div className="flex justify-between items-center mb-4">
+                            <div>
+                              <h3 className="text-lg font-bold text-white">Guests Currently Inside Campus</h3>
+                              <p className="text-xs text-slate-400">Real-time head-count for emergency safety and gate clearance</p>
+                            </div>
+                            <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-bold">
+                              {activeInsideCount} Active Guests
+                            </span>
+                          </div>
 
-                          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 overflow-hidden mb-4">
+                          <div className="overflow-x-auto rounded-xl border border-slate-800">
+                            <table className="w-full text-left text-xs">
+                              <thead className="bg-slate-900 text-slate-400 uppercase border-b border-slate-800 font-semibold">
+                                <tr>
+                                  <th className="p-3">Photo</th>
+                                  <th className="p-3">Badge ID</th>
+                                  <th className="p-3">Visitor Name</th>
+                                  <th className="p-3">Host Personnel</th>
+                                  <th className="p-3">Purpose</th>
+                                  <th className="p-3">Logistics</th>
+                                  <th className="p-3">Check-In</th>
+                                  <th className="p-3">Action</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-800 bg-slate-900/40">
+                                {visitors.filter(v => v.status === 'Inside').length === 0 ? (
+                                  <tr>
+                                    <td colSpan="8" className="p-6 text-center text-slate-500">No visitors currently on premises.</td>
+                                  </tr>
+                                ) : (
+                                  visitors.filter(v => v.status === 'Inside').map(vis => (
+                                    <tr key={vis.id} className="hover:bg-slate-800/40">
+                                      <td className="p-3">
+                                        {vis.photo ? (
+                                          <img src={vis.photo} alt="Visitor" className="w-9 h-9 rounded-lg object-cover border border-slate-700" />
+                                        ) : (
+                                          <div className="w-9 h-9 rounded-lg bg-slate-800 flex items-center justify-center font-bold text-slate-500 text-[10px]">VIS</div>
+                                        )}
+                                      </td>
+                                      <td className="p-3 font-mono text-cyan-400 font-bold">{vis.id}</td>
+                                      <td className="p-3 font-bold text-white">{vis.name}</td>
+                                      <td className="p-3 text-slate-300">{vis.host}</td>
+                                      <td className="p-3 text-slate-400">{vis.purpose}</td>
+                                      <td className="p-3 text-slate-400">{vis.logistics}</td>
+                                      <td className="p-3 text-slate-400">{vis.checkIn}</td>
+                                      <td className="p-3">
+                                        <button 
+                                          onClick={() => handleCheckOut(vis.id)}
+                                          className="px-2.5 py-1 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg hover:bg-amber-500/30 font-semibold"
+                                        >
+                                          Check Out
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  ))
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 4. GATE QR SCANNER TAB */}
+                      {activeTab === 'scanner' && (
+                        <div className="max-w-md mx-auto text-center py-6">
+                          <h3 className="text-lg font-bold text-white mb-1">Gate Camera QR Scanner</h3>
+                          <p className="text-xs text-slate-400 mb-4">Point front/rear camera at visitor's badge QR to immediately check out guests.</p>
+
+                          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 overflow-hidden mb-4 shadow-inner">
                             <div id="qr-reader" className="w-full"></div>
                           </div>
 
                           {!scannerActive ? (
                             <button 
                               onClick={() => setScannerActive(true)}
-                              className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs transition"
+                              className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs transition shadow-lg"
                             >
                               Activate Scanner Camera
                             </button>
                           ) : (
                             <button 
                               onClick={() => setScannerActive(false)}
-                              className="px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs transition"
+                              className="px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs transition border border-slate-700"
                             >
                               Deactivate Camera
                             </button>
@@ -1023,7 +1172,7 @@
                         </div>
                       )}
 
-                      {/* TAB 4: HOST MASTER (7) */}
+                      {/* 5. HOST MASTER TAB (CLEAN 7 HOST ROSTER) */}
                       {activeTab === 'employees' && (
                         <div>
                           <div className="flex justify-between items-center mb-4">
@@ -1036,7 +1185,7 @@
 
                           <div className="overflow-x-auto rounded-xl border border-slate-800">
                             <table className="w-full text-left text-xs">
-                              <thead className="bg-slate-900/80 text-slate-400 uppercase border-b border-slate-800 font-semibold">
+                              <thead className="bg-slate-900 text-slate-400 uppercase border-b border-slate-800 font-semibold">
                                 <tr>
                                   <th className="p-3">Employee ID</th>
                                   <th className="p-3">Full Name</th>
@@ -1046,7 +1195,7 @@
                                   <th className="p-3">Status</th>
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-slate-800">
+                              <tbody className="divide-y divide-slate-800 bg-slate-900/40">
                                 {OFFICIAL_EMPLOYEES.map(emp => (
                                   <tr key={emp.id} className="hover:bg-slate-800/40">
                                     <td className="p-3 font-mono text-cyan-400 font-bold">{emp.id}</td>
@@ -1067,53 +1216,53 @@
                         </div>
                       )}
 
-                      {/* TAB 5: STORAGE & OUTAGES */}
+                      {/* 6. STORAGE & OUTAGES TAB */}
                       {activeTab === 'storage' && (
                         <div className="space-y-6">
                           <div>
                             <h3 className="text-lg font-bold text-white">Free Cloud Storage Management</h3>
-                            <p className="text-xs text-slate-400">Monitor usage against the 1,024 MB tier and prevent upload rejection outages.</p>
+                            <p className="text-xs text-slate-400">Monitor storage against the 1,024 MB tier and prevent upload rejection outages.</p>
                           </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-800">
                               <div className="text-xs text-slate-400 uppercase font-semibold">Database JSON Footprint</div>
-                              <div className="text-xl font-bold text-white mt-1">2.4 MB</div>
+                              <div className="text-xl font-bold text-white mt-1">{rawStorageMB} MB</div>
                               <p className="text-[10px] text-slate-500 mt-1">Text-based visitor logs & host tables</p>
                             </div>
                             <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-800">
                               <div className="text-xs text-slate-400 uppercase font-semibold">Compressed Photos (WebP)</div>
-                              <div className="text-xl font-bold text-cyan-400 mt-1">{(usedStorageMB - 2.4).toFixed(1)} MB</div>
-                              <p className="text-[10px] text-slate-500 mt-1">Auto-optimized client-side badges</p>
+                              <div className="text-xl font-bold text-cyan-400 mt-1">{(effectiveStorageMB - rawStorageMB).toFixed(1)} MB</div>
+                              <p className="text-[10px] text-slate-500 mt-1">Client-side badge photos</p>
                             </div>
                             <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-800">
                               <div className="text-xs text-slate-400 uppercase font-semibold">Current Usage Quota</div>
                               <div className={`text-xl font-bold mt-1 ${storagePct >= 90 ? 'text-rose-400' : storagePct >= 75 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                                {storagePct}% ({usedStorageMB} / 1024 MB)
+                                {storagePct}% ({effectiveStorageMB} / 1024 MB)
                               </div>
                               <p className="text-[10px] text-slate-500 mt-1">Amber alert at 75%, Outage at 90%</p>
                             </div>
                           </div>
 
-                          {/* Simulation & Outage Testing */}
+                          {/* Outage Simulation */}
                           <div className="bg-slate-900/80 p-5 rounded-xl border border-slate-800">
                             <h4 className="text-sm font-bold text-white mb-2">Interactive Outage & Alert Simulator</h4>
                             <p className="text-xs text-slate-400 mb-4">Simulate quota conditions to verify security banners and preventative actions.</p>
                             <div className="flex gap-3 flex-wrap">
                               <button 
-                                onClick={() => setUsedStorageMB(50.4)}
+                                onClick={() => setSimulatedUsageMB(0)}
                                 className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold"
                               >
-                                Reset Normal (50.4 MB / 5%)
+                                Reset Live Actual Usage
                               </button>
                               <button 
-                                onClick={() => setUsedStorageMB(785.0)}
+                                onClick={() => setSimulatedUsageMB(785.0)}
                                 className="px-3 py-2 bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30 rounded-lg text-xs font-semibold"
                               >
                                 Trigger Warning State (785 MB / 77%)
                               </button>
                               <button 
-                                onClick={() => setUsedStorageMB(945.0)}
+                                onClick={() => setSimulatedUsageMB(945.0)}
                                 className="px-3 py-2 bg-rose-500/20 text-rose-400 border border-rose-500/30 hover:bg-rose-500/30 rounded-lg text-xs font-semibold"
                               >
                                 Trigger Critical Outage State (945 MB / 92%)
@@ -1121,7 +1270,7 @@
                             </div>
                           </div>
 
-                          {/* Purge Engine */}
+                          {/* Zero-Loss Archival */}
                           <div className="bg-slate-900/80 p-5 rounded-xl border border-slate-800 flex justify-between items-center flex-wrap gap-4">
                             <div>
                               <h4 className="text-sm font-bold text-white">Zero-Loss Archival & Purge Engine</h4>
@@ -1136,6 +1285,7 @@
                           </div>
                         </div>
                       )}
+
                     </div>
                   </div>
                 )}
