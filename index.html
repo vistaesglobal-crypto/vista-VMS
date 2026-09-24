@@ -9,7 +9,7 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
@@ -27,7 +27,6 @@
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
 
-    // Official VISTA Vector Logo (Aspect-Locked, Offline Native SVG)
     const VistaLogo = ({ className = "h-9" }) => (
       <div className={`vista-logo-frame ${className}`}>
         <svg viewBox="0 0 480 300" className="w-full h-full object-contain" xmlns="http://www.w3.org/2000/svg">
@@ -94,7 +93,6 @@
       </div>
     );
 
-    // Official Clean Host Roster (Hariprasath as Frontdesk/Reception; zero contact phones or emails)
     const OFFICIAL_EMPLOYEES = [
       { id: "VES-0101", name: "Magesh Kumar S", dept: "Indian Operations", role: "Head - Operations", access: "Management / Host", status: "Active" },
       { id: "VES-0102", name: "Mohan D", dept: "Operations", role: "Operations Lead", access: "Management / Host", status: "Active" },
@@ -106,6 +104,7 @@
     ];
 
     const STORAGE_KEY = "VISTA_VMS_VISITORS_DATA";
+    const TOTAL_QUOTA_MB = 5120; // 5 GB Tier
 
     function App() {
       const queryParams = new URLSearchParams(window.location.search);
@@ -116,12 +115,10 @@
       const [currentUser, setCurrentUser] = useState(null);
       const [activeTab, setActiveTab] = useState('dashboard');
 
-      // Login form state
       const [loginId, setLoginId] = useState('');
       const [loginPass, setLoginPass] = useState('');
       const [loginError, setLoginError] = useState('');
 
-      // Public visitor registration state (Full 4 steps)
       const [step, setStep] = useState(1);
       const [formData, setFormData] = useState({
         fullName: '', phone: '', company: '', govtIdLast4: '',
@@ -131,7 +128,6 @@
       const [cameraActive, setCameraActive] = useState(false);
       const [registeredBadge, setRegisteredBadge] = useState(null);
 
-      // Master Visitor Store (Initialized clean/empty)
       const [visitors, setVisitors] = useState(() => {
         try {
           const saved = localStorage.getItem(STORAGE_KEY);
@@ -141,7 +137,6 @@
         }
       });
 
-      // Synchronize storage cross-tab & cross-device in real-time
       useEffect(() => {
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(visitors));
@@ -162,13 +157,11 @@
         return () => window.removeEventListener('storage', handleStorageSync);
       }, []);
 
-      // Storage quota monitoring (1024 MB quota)
       const [simulatedUsageMB, setSimulatedUsageMB] = useState(0);
       const rawStorageMB = Number(((JSON.stringify(visitors).length * 2) / (1024 * 1024)).toFixed(2));
-      const effectiveStorageMB = simulatedUsageMB > 0 ? simulatedUsageMB : Number((rawStorageMB + 1.2).toFixed(2));
-      const storagePct = Math.min(100, Math.round((effectiveStorageMB / 1024) * 100));
+      const effectiveStorageMB = simulatedUsageMB > 0 ? simulatedUsageMB : Number((rawStorageMB + 2.5).toFixed(2));
+      const storagePct = Math.min(100, Math.round((effectiveStorageMB / TOTAL_QUOTA_MB) * 100));
 
-      // QR Scanner state
       const [scannerActive, setScannerActive] = useState(false);
       const [scannerMessage, setScannerMessage] = useState('');
 
@@ -178,21 +171,17 @@
       const standeeQrRef = useRef(null);
       const [standeeModalOpen, setStandeeModalOpen] = useState(false);
 
-      // Start Visitor Photo Camera
       const startCamera = async () => {
         try {
           setCameraActive(true);
           const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 480, height: 480 } });
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-          }
+          if (videoRef.current) videoRef.current.srcObject = stream;
         } catch (err) {
-          alert("Camera access denied or unavailable. You can complete registration without photo.");
+          alert("Camera access unavailable. Registration can proceed without photo.");
           setCameraActive(false);
         }
       };
 
-      // Capture photo & compress to lightweight WebP data
       const capturePhoto = () => {
         if (!videoRef.current || !canvasRef.current) return;
         const video = videoRef.current;
@@ -201,7 +190,7 @@
         canvas.height = 300;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, 0, 0, 300, 300);
-        const dataUrl = canvas.toDataURL('image/webp', 0.65);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
         setFormData({ ...formData, photo: dataUrl });
 
         if (video.srcObject) {
@@ -210,7 +199,6 @@
         setCameraActive(false);
       };
 
-      // Staff Portal Authentication
       const handleLogin = (e) => {
         e.preventDefault();
         setLoginError('');
@@ -228,7 +216,6 @@
         }
       };
 
-      // Visitor Self-Registration submission
       const handleVisitorSubmit = (e) => {
         if (e) e.preventDefault();
         const hostObj = OFFICIAL_EMPLOYEES.find(emp => emp.id === formData.hostId) || OFFICIAL_EMPLOYEES[2];
@@ -260,7 +247,7 @@
         setVisitors(updated);
       };
 
-      // Camera QR Scanner Engine for Reception / Gate
+      // Camera QR Scanner
       useEffect(() => {
         let html5QrCode = null;
         if (activeTab === 'scanner' && scannerActive && window.Html5Qrcode) {
@@ -281,10 +268,10 @@
                     setScannerMessage(`${found.name} (${badgeId}) is already Checked Out.`);
                   }
                 } else {
-                  setScannerMessage(`Badge ${badgeId} not found in current roster.`);
+                  setScannerMessage(`Badge ${badgeId} not found.`);
                 }
               } else {
-                setScannerMessage("Invalid VISTA badge QR format.");
+                setScannerMessage("Invalid VISTA QR format.");
               }
             },
             () => {}
@@ -294,98 +281,187 @@
           });
         }
         return () => {
-          if (html5QrCode) {
-            html5QrCode.stop().catch(() => {});
-          }
+          if (html5QrCode) html5QrCode.stop().catch(() => {});
         };
       }, [activeTab, scannerActive, visitors]);
 
-      // Generate Badge QR code
       useEffect(() => {
         if (step === 5 && registeredBadge && badgeQrRef.current && window.QRCode) {
           window.QRCode.toCanvas(badgeQrRef.current, `VISTA-PASS:${registeredBadge.id}:${registeredBadge.name}`, { width: 140, margin: 1 });
         }
       }, [step, registeredBadge]);
 
-      // Generate Entrance Standee QR
       useEffect(() => {
         if (standeeModalOpen && standeeQrRef.current && window.QRCode) {
           window.QRCode.toCanvas(standeeQrRef.current, "https://vistaesglobal-crypto.github.io/vista-VMS/?mode=visitor", { width: 240, margin: 1 });
         }
       }, [standeeModalOpen]);
 
-      // Export to Excel
-      const exportToExcel = () => {
-        if (!window.XLSX) return;
-        const data = visitors.map(v => ({
-          "Badge ID": v.id,
-          "Visitor Name": v.name,
-          "Phone": v.phone,
-          "Company": v.company,
-          "Host Employee": v.host,
-          "Department": v.dept,
-          "Visit Purpose": v.purpose,
-          "Logistics": v.logistics,
-          "Check-In Time": v.checkIn,
-          "Check-Out Time": v.checkOut,
-          "Status": v.status
-        }));
-        const ws = window.XLSX.utils.json_to_sheet(data);
-        const wb = window.XLSX.utils.book_new();
-        window.XLSX.utils.book_append_sheet(wb, ws, "Visitor Log");
-        window.XLSX.writeFile(wb, "VISTA_Visitor_Register_Export.xlsx");
+      // Excel Export WITH EMBEDDED IMAGES (ExcelJS Engine)
+      const exportToExcelWithImages = async () => {
+        if (!window.ExcelJS) {
+          alert("ExcelJS library is still initializing. Please wait a moment.");
+          return;
+        }
+
+        const workbook = new window.ExcelJS.Workbook();
+        workbook.creator = "VISTA Visitor Management System";
+        workbook.created = new Date();
+
+        const worksheet = workbook.addWorksheet("Visitor Register");
+
+        worksheet.columns = [
+          { header: "Photo", key: "photo", width: 15 },
+          { header: "Badge ID", key: "id", width: 14 },
+          { header: "Visitor Name", key: "name", width: 24 },
+          { header: "Phone", key: "phone", width: 16 },
+          { header: "Company", key: "company", width: 22 },
+          { header: "Host Personnel", key: "host", width: 22 },
+          { header: "Department", key: "dept", width: 24 },
+          { header: "Visit Purpose", key: "purpose", width: 24 },
+          { header: "Logistics", key: "logistics", width: 18 },
+          { header: "Check-In", key: "checkIn", width: 14 },
+          { header: "Check-Out", key: "checkOut", width: 14 },
+          { header: "Status", key: "status", width: 14 }
+        ];
+
+        // Format header row
+        const headerRow = worksheet.getRow(1);
+        headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF111C4E" } };
+        headerRow.height = 25;
+        headerRow.alignment = { vertical: "middle", horizontal: "center" };
+
+        visitors.forEach((v, index) => {
+          const rowNumber = index + 2;
+          const row = worksheet.addRow({
+            photo: "",
+            id: v.id,
+            name: v.name,
+            phone: v.phone,
+            company: v.company,
+            host: v.host,
+            dept: v.dept,
+            purpose: v.purpose,
+            logistics: v.logistics,
+            checkIn: v.checkIn,
+            checkOut: v.checkOut,
+            status: v.status
+          });
+
+          row.height = 55;
+          row.alignment = { vertical: "middle" };
+
+          // Embed Image
+          if (v.photo && v.photo.startsWith("data:image")) {
+            try {
+              const imageId = workbook.addImage({
+                base64: v.photo,
+                extension: "jpeg"
+              });
+
+              worksheet.addImage(imageId, {
+                tl: { col: 0.1, row: rowNumber - 1 + 0.1 },
+                ext: { width: 60, height: 60 },
+                editAs: "oneCell"
+              });
+            } catch (err) {
+              console.error("Failed to embed photo into row", err);
+            }
+          }
+        });
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `VISTA_Visitor_Register_${new Date().toISOString().slice(0, 10)}.xlsx`;
+        link.click();
       };
 
-      // Export to PDF
-      const exportToPDF = () => {
+      // PDF Export WITH EMBEDDED IMAGES (jsPDF + autoTable didDrawCell)
+      const exportToPDFWithImages = () => {
         if (!window.jspdf) return;
         const { jsPDF } = window.jspdf;
-        const doc = new jsPDF('l', 'mm', 'a4');
-        doc.setFontSize(16);
-        doc.text("VISTA Engg Solutions Private Limited - Campus Visitor Log", 14, 15);
-        doc.setFontSize(10);
-        doc.text(`Generated on: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, 14, 22);
+        const doc = new jsPDF("l", "mm", "a4");
 
-        const tableData = visitors.map(v => [
-          v.id, v.name, v.company, v.host, v.dept, v.purpose, v.logistics, v.checkIn, v.checkOut, v.status
+        doc.setFontSize(15);
+        doc.setTextColor(17, 28, 78);
+        doc.text("VISTA Engg Solutions Private Limited", 14, 14);
+        doc.setFontSize(10);
+        doc.setTextColor(100);
+        doc.text(`Official Visitor Log • Generated: ${new Date().toLocaleString()}`, 14, 20);
+
+        const tableBody = visitors.map(v => [
+          "",
+          v.id,
+          v.name,
+          v.company,
+          v.host,
+          v.dept,
+          v.purpose,
+          v.logistics,
+          v.checkIn,
+          v.checkOut,
+          v.status
         ]);
 
         doc.autoTable({
-          head: [['Badge ID', 'Name', 'Company', 'Host', 'Dept', 'Purpose', 'Logistics', 'In', 'Out', 'Status']],
-          body: tableData,
-          startY: 26,
-          theme: 'grid',
-          headStyles: { fillColor: [17, 28, 78] },
-          styles: { fontSize: 8 }
+          head: [["Photo", "Badge ID", "Visitor Name", "Company", "Host", "Dept", "Purpose", "Logistics", "In", "Out", "Status"]],
+          body: tableBody,
+          startY: 24,
+          theme: "grid",
+          headStyles: { fillColor: [17, 28, 78], textColor: [255, 255, 255], fontStyle: "bold" },
+          styles: { fontSize: 8, minCellHeight: 16, verticalAlign: "middle" },
+          columnStyles: {
+            0: { cellWidth: 18, halign: "center" }
+          },
+          didDrawCell: (data) => {
+            if (data.section === "body" && data.column.index === 0) {
+              const rowIndex = data.row.index;
+              const visitorItem = visitors[rowIndex];
+              if (visitorItem && visitorItem.photo && visitorItem.photo.startsWith("data:image")) {
+                try {
+                  doc.addImage(
+                    visitorItem.photo,
+                    "JPEG",
+                    data.cell.x + 2,
+                    data.cell.y + 1,
+                    14,
+                    14
+                  );
+                } catch (e) {
+                  console.error("PDF image draw error", e);
+                }
+              }
+            }
+          }
         });
-        doc.save("VISTA_Visitor_Compliance_Log.pdf");
+
+        doc.save(`VISTA_Visitor_Register_${new Date().toISOString().slice(0, 10)}.pdf`);
       };
 
-      // Purge and Zero-Loss Archival
-      const handleStoragePurge = () => {
-        exportToExcel();
-        const purged = visitors.map(v => ({ ...v, photo: '' }));
+      const handleStoragePurge = async () => {
+        await exportToExcelWithImages();
+        const purged = visitors.map(v => ({ ...v, photo: "" }));
         setVisitors(purged);
         setSimulatedUsageMB(0);
-        alert("Zero-loss archival complete! Complete Excel log downloaded and photo binaries cleared.");
+        alert("Zero-Loss Archival complete! Excel workbook with embedded photos downloaded. Storage freed.");
       };
 
-      // Counts based on active database
-      const activeInsideCount = visitors.filter(v => v.status === 'Inside').length;
+      const activeInsideCount = visitors.filter(v => v.status === "Inside").length;
       const todayTotalVisits = visitors.length;
 
       return (
         <div className="min-h-screen flex flex-col">
           
-          {/* Storage Alert Banners */}
           {storagePct >= 75 && (
             <div className={`px-6 py-2 text-xs font-bold text-center flex items-center justify-center gap-2 ${storagePct >= 90 ? 'bg-rose-600 text-white' : 'bg-amber-500 text-slate-900'}`}>
-              <span>⚠️ {storagePct >= 90 ? 'CRITICAL STORAGE ALERT (≥90% Quota Exceeded): Purge media or export logs immediately to prevent upload outages.' : 'STORAGE CAPACITY WARNING (≥75%): Usage nearing free cloud tier limits.'}</span>
+              <span>⚠️ {storagePct >= 90 ? 'CRITICAL STORAGE ALERT (≥90% Quota Exceeded): Purge media or export logs immediately.' : 'STORAGE CAPACITY WARNING (≥75%): Nearing quota limit.'}</span>
               <button onClick={() => { setView('staff'); setActiveTab('storage'); }} className="underline font-black uppercase text-[11px] ml-2">Open Storage Console &rarr;</button>
             </div>
           )}
 
-          {/* Top Bar: Strictly hidden in visitor scan mode */}
           {!isVisitorParam && (
             <header className="border-b border-slate-800 bg-slate-950/90 px-6 py-3 flex items-center justify-between sticky top-0 z-30">
               <div className="flex items-center gap-3">
@@ -426,10 +502,8 @@
             </header>
           )}
 
-          {/* MAIN APPLICATION VIEW */}
           <main className="flex-1 flex flex-col">
             
-            {/* 1. VISITOR REGISTRATION VIEW */}
             {view === 'visitor' && (
               <div className="flex-1 flex items-center justify-center p-4">
                 <div className="w-full max-w-lg glass-card rounded-2xl p-6 sm:p-8 shadow-2xl border border-slate-800 my-4">
@@ -437,7 +511,6 @@
                     <VistaLogo className="h-14" />
                   </div>
 
-                  {/* Step 0: Welcome Screen */}
                   {step === 1 && (
                     <div className="text-center">
                       <h2 className="text-2xl font-bold text-white mb-2">Welcome to VISTA Campus</h2>
@@ -463,7 +536,6 @@
                     </div>
                   )}
 
-                  {/* Step 1: Contact & Identity */}
                   {step === 2 && (
                     <form onSubmit={(e) => { e.preventDefault(); setStep(3); }}>
                       <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
@@ -521,7 +593,6 @@
                     </form>
                   )}
 
-                  {/* Step 2: Host & Purpose */}
                   {step === 3 && (
                     <form onSubmit={(e) => { e.preventDefault(); setStep(4); }}>
                       <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
@@ -566,7 +637,6 @@
                     </form>
                   )}
 
-                  {/* Step 3: Logistics (Come by Walk toggle) & Carried Assets */}
                   {step === 4 && (
                     <form onSubmit={(e) => { e.preventDefault(); setStep(45); }}>
                       <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
@@ -620,7 +690,6 @@
                     </form>
                   )}
 
-                  {/* Step 4: Live Photo Capture */}
                   {step === 45 && (
                     <div>
                       <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
@@ -689,7 +758,6 @@
                     </div>
                   )}
 
-                  {/* Step 5: Full Generated Pass */}
                   {step === 5 && registeredBadge && (
                     <div className="text-center">
                       <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-3 rounded-xl text-xs font-bold mb-4">
@@ -751,11 +819,9 @@
               </div>
             )}
 
-            {/* 2. SECURITY & STAFF PORTAL (RICH INTERACTIVE DASHBOARD) */}
             {view === 'staff' && (
               <div className="flex-1 flex">
                 {!currentUser ? (
-                  // Locked Login Console (Strictly manual authentication)
                   <div className="flex-1 flex items-center justify-center p-4">
                     <div className="max-w-md w-full glass-card rounded-2xl p-8 border border-slate-800 shadow-2xl">
                       <div className="flex justify-center mb-6">
@@ -805,13 +871,10 @@
                     </div>
                   </div>
                 ) : (
-                  // Full Interactive Management Console
                   <div className="flex-1 flex flex-col md:flex-row">
                     
-                    {/* Left Sidebar */}
                     <aside className="w-full md:w-64 glass-sidebar p-5 flex flex-col justify-between shrink-0">
                       <div className="space-y-6">
-                        {/* User Identity Card */}
                         <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800 flex items-center gap-3">
                           <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center font-black text-white text-base shadow-md">
                             {currentUser.name[0]}
@@ -822,7 +885,6 @@
                           </div>
                         </div>
 
-                        {/* Navigation Links */}
                         <nav className="space-y-1">
                           <button 
                             onClick={() => setActiveTab('dashboard')} 
@@ -865,14 +927,13 @@
                         </nav>
                       </div>
 
-                      {/* Utility buttons */}
                       <div className="pt-4 border-t border-slate-800 space-y-2">
                         <div className="flex gap-2">
-                          <button onClick={exportToExcel} className="w-1/2 py-2 bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 rounded-lg text-xs font-bold hover:bg-emerald-600/30 transition">
-                            Excel
+                          <button onClick={exportToExcelWithImages} className="w-1/2 py-2 bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 rounded-lg text-xs font-bold hover:bg-emerald-600/30 transition">
+                            Excel (+Pics)
                           </button>
-                          <button onClick={exportToPDF} className="w-1/2 py-2 bg-indigo-600/20 text-indigo-400 border border-indigo-600/30 rounded-lg text-xs font-bold hover:bg-indigo-600/30 transition">
-                            PDF
+                          <button onClick={exportToPDFWithImages} className="w-1/2 py-2 bg-indigo-600/20 text-indigo-400 border border-indigo-600/30 rounded-lg text-xs font-bold hover:bg-indigo-600/30 transition">
+                            PDF (+Pics)
                           </button>
                         </div>
                         <button 
@@ -884,10 +945,8 @@
                       </div>
                     </aside>
 
-                    {/* Right Content Workspace */}
                     <div className="flex-1 p-6 overflow-y-auto">
                       
-                      {/* 1. DASHBOARD & KPIS TAB */}
                       {activeTab === 'dashboard' && (
                         <div className="space-y-6">
                           <div className="flex justify-between items-center flex-wrap gap-3">
@@ -900,7 +959,6 @@
                             </span>
                           </div>
 
-                          {/* KPI Cards */}
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
                               <div className="text-xs text-slate-400 uppercase font-semibold">Total Campus Footfall</div>
@@ -910,7 +968,7 @@
                             <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
                               <div className="text-xs text-slate-400 uppercase font-semibold">Today's Visits</div>
                               <div className="text-2xl font-bold text-cyan-400 mt-1">{todayTotalVisits}</div>
-                              <span className="text-[10px] text-slate-400">Peak: 10:00 - 11:30 AM</span>
+                              <span className="text-[10px] text-slate-400">Live Counter</span>
                             </div>
                             <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
                               <div className="text-xs text-slate-400 uppercase font-semibold">Currently Inside</div>
@@ -918,16 +976,14 @@
                               <span className="text-[10px] text-emerald-400 font-bold">Active Badges</span>
                             </div>
                             <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
-                              <div className="text-xs text-slate-400 uppercase font-semibold">Free Cloud Storage</div>
+                              <div className="text-xs text-slate-400 uppercase font-semibold">Cloud Storage Tier</div>
                               <div className="text-2xl font-bold text-white mt-1">{storagePct}%</div>
-                              <span className="text-[10px] text-slate-400">{effectiveStorageMB} / 1024 MB</span>
+                              <span className="text-[10px] text-slate-400">{effectiveStorageMB} / {TOTAL_QUOTA_MB} MB</span>
                             </div>
                           </div>
 
-                          {/* Breakdown Charts & Arrival Alert Feeds */}
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             
-                            {/* Breakdown By Category */}
                             <div className="bg-slate-900/50 p-5 rounded-xl border border-slate-800">
                               <h4 className="text-sm font-bold text-white mb-4">Footfall by Category</h4>
                               <div className="space-y-3 text-xs">
@@ -950,7 +1006,6 @@
                               </div>
                             </div>
 
-                            {/* Department Distribution */}
                             <div className="bg-slate-900/50 p-5 rounded-xl border border-slate-800">
                               <h4 className="text-sm font-bold text-white mb-4">Visits by Department</h4>
                               <div className="space-y-2 text-xs">
@@ -973,7 +1028,6 @@
                               </div>
                             </div>
 
-                            {/* Live Arrival Alerts Feed */}
                             <div className="bg-slate-900/50 p-5 rounded-xl border border-slate-800">
                               <h4 className="text-sm font-bold text-white mb-4">Live Arrival Alerts</h4>
                               <div className="space-y-2.5 text-xs max-h-56 overflow-y-auto">
@@ -998,17 +1052,21 @@
                         </div>
                       )}
 
-                      {/* 2. ALL VISITORS TAB */}
                       {activeTab === 'visitors' && (
                         <div>
                           <div className="flex justify-between items-center mb-4">
                             <div>
                               <h3 className="text-lg font-bold text-white">Master Visitor Register</h3>
-                              <p className="text-xs text-slate-400">Complete audit log of all visitors</p>
+                              <p className="text-xs text-slate-400">Complete audit log with captured visitor snapshots</p>
                             </div>
-                            <span className="px-3 py-1 bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded-full text-xs font-semibold">
-                              Total Records: {visitors.length}
-                            </span>
+                            <div className="flex gap-2">
+                              <button onClick={exportToExcelWithImages} className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition">
+                                Export Excel (+Pics)
+                              </button>
+                              <button onClick={exportToPDFWithImages} className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition">
+                                Export PDF (+Pics)
+                              </button>
+                            </div>
                           </div>
 
                           <div className="overflow-x-auto rounded-xl border border-slate-800">
@@ -1037,7 +1095,7 @@
                                     <tr key={vis.id} className="hover:bg-slate-800/40">
                                       <td className="p-3">
                                         {vis.photo ? (
-                                          <img src={vis.photo} alt="Visitor" className="w-9 h-9 rounded-lg object-cover border border-slate-700" />
+                                          <img src={vis.photo} alt="Visitor" className="w-9 h-9 rounded-lg object-cover border border-slate-700 shadow-sm" />
                                         ) : (
                                           <div className="w-9 h-9 rounded-lg bg-slate-800 flex items-center justify-center font-bold text-slate-500 text-[10px]">VIS</div>
                                         )}
@@ -1073,13 +1131,12 @@
                         </div>
                       )}
 
-                      {/* 3. CURRENTLY INSIDE TAB */}
                       {activeTab === 'inside' && (
                         <div>
                           <div className="flex justify-between items-center mb-4">
                             <div>
                               <h3 className="text-lg font-bold text-white">Guests Currently Inside Campus</h3>
-                              <p className="text-xs text-slate-400">Real-time head-count for emergency safety and gate clearance</p>
+                              <p className="text-xs text-slate-400">Real-time head-count for safety and clearance</p>
                             </div>
                             <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-bold">
                               {activeInsideCount} Active Guests
@@ -1138,7 +1195,6 @@
                         </div>
                       )}
 
-                      {/* 4. GATE QR SCANNER TAB */}
                       {activeTab === 'scanner' && (
                         <div className="max-w-md mx-auto text-center py-6">
                           <h3 className="text-lg font-bold text-white mb-1">Gate Camera QR Scanner</h3>
@@ -1172,7 +1228,6 @@
                         </div>
                       )}
 
-                      {/* 5. HOST MASTER TAB (CLEAN 7 HOST ROSTER) */}
                       {activeTab === 'employees' && (
                         <div>
                           <div className="flex justify-between items-center mb-4">
@@ -1216,12 +1271,11 @@
                         </div>
                       )}
 
-                      {/* 6. STORAGE & OUTAGES TAB */}
                       {activeTab === 'storage' && (
                         <div className="space-y-6">
                           <div>
-                            <h3 className="text-lg font-bold text-white">Free Cloud Storage Management</h3>
-                            <p className="text-xs text-slate-400">Monitor storage against the 1,024 MB tier and prevent upload rejection outages.</p>
+                            <h3 className="text-lg font-bold text-white">Cloud Storage & Quota Management</h3>
+                            <p className="text-xs text-slate-400">Configured with 5,120 MB (5 GB) storage tier to accommodate long-term photo logging.</p>
                           </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1231,23 +1285,22 @@
                               <p className="text-[10px] text-slate-500 mt-1">Text-based visitor logs & host tables</p>
                             </div>
                             <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-800">
-                              <div className="text-xs text-slate-400 uppercase font-semibold">Compressed Photos (WebP)</div>
+                              <div className="text-xs text-slate-400 uppercase font-semibold">Compressed Photos (WebP/JPEG)</div>
                               <div className="text-xl font-bold text-cyan-400 mt-1">{(effectiveStorageMB - rawStorageMB).toFixed(1)} MB</div>
-                              <p className="text-[10px] text-slate-500 mt-1">Client-side badge photos</p>
+                              <p className="text-[10px] text-slate-500 mt-1">Optimized client-side badge photos</p>
                             </div>
                             <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-800">
-                              <div className="text-xs text-slate-400 uppercase font-semibold">Current Usage Quota</div>
+                              <div className="text-xs text-slate-400 uppercase font-semibold">Storage Utilization</div>
                               <div className={`text-xl font-bold mt-1 ${storagePct >= 90 ? 'text-rose-400' : storagePct >= 75 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                                {storagePct}% ({effectiveStorageMB} / 1024 MB)
+                                {storagePct}% ({effectiveStorageMB} / {TOTAL_QUOTA_MB} MB)
                               </div>
-                              <p className="text-[10px] text-slate-500 mt-1">Amber alert at 75%, Outage at 90%</p>
+                              <p className="text-[10px] text-slate-500 mt-1">Amber alert at 75%, Outage banner at 90%</p>
                             </div>
                           </div>
 
-                          {/* Outage Simulation */}
                           <div className="bg-slate-900/80 p-5 rounded-xl border border-slate-800">
                             <h4 className="text-sm font-bold text-white mb-2">Interactive Outage & Alert Simulator</h4>
-                            <p className="text-xs text-slate-400 mb-4">Simulate quota conditions to verify security banners and preventative actions.</p>
+                            <p className="text-xs text-slate-400 mb-4">Simulate storage thresholds to verify alerts and exports.</p>
                             <div className="flex gap-3 flex-wrap">
                               <button 
                                 onClick={() => setSimulatedUsageMB(0)}
@@ -1256,25 +1309,24 @@
                                 Reset Live Actual Usage
                               </button>
                               <button 
-                                onClick={() => setSimulatedUsageMB(785.0)}
+                                onClick={() => setSimulatedUsageMB(3900.0)}
                                 className="px-3 py-2 bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30 rounded-lg text-xs font-semibold"
                               >
-                                Trigger Warning State (785 MB / 77%)
+                                Simulate Warning State (3,900 MB / 76%)
                               </button>
                               <button 
-                                onClick={() => setSimulatedUsageMB(945.0)}
+                                onClick={() => setSimulatedUsageMB(4800.0)}
                                 className="px-3 py-2 bg-rose-500/20 text-rose-400 border border-rose-500/30 hover:bg-rose-500/30 rounded-lg text-xs font-semibold"
                               >
-                                Trigger Critical Outage State (945 MB / 92%)
+                                Simulate Outage State (4,800 MB / 94%)
                               </button>
                             </div>
                           </div>
 
-                          {/* Zero-Loss Archival */}
                           <div className="bg-slate-900/80 p-5 rounded-xl border border-slate-800 flex justify-between items-center flex-wrap gap-4">
                             <div>
                               <h4 className="text-sm font-bold text-white">Zero-Loss Archival & Purge Engine</h4>
-                              <p className="text-xs text-slate-400">Downloads a complete Excel backup log and frees storage by removing expired media binaries.</p>
+                              <p className="text-xs text-slate-400">Downloads complete Excel workbook with embedded photos and resets storage binaries.</p>
                             </div>
                             <button 
                               onClick={handleStoragePurge}
@@ -1293,7 +1345,6 @@
             )}
           </main>
 
-          {/* Entrance Standee QR Modal */}
           {standeeModalOpen && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
               <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-sm w-full p-6 text-center shadow-2xl relative">
@@ -1324,7 +1375,6 @@
             </div>
           )}
 
-          {/* Clean Footer with Discreet Staff Access Link */}
           <footer className="border-t border-slate-800/80 py-3 px-6 flex items-center justify-between text-xs text-slate-500">
             <div>© 2026 VISTA Engg Solutions Private Limited. All Rights Reserved.</div>
             <div>
