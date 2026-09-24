@@ -13,7 +13,7 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
-  <!-- QRCode generator for secure pass generation -->
+  <!-- QRCode generator -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
   <!-- React 18 & Babel for standalone zero-config runtime -->
@@ -22,7 +22,7 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
     body { font-family: 'Inter', sans-serif; }
     .scan-line {
       position: absolute;
@@ -38,26 +38,21 @@
     }
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-
-    /* Exact natural ratio container: 16:10 / 1.6:1 */
-    .vista-logo-badge {
+    .vista-logo-frame {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      background: #ffffff;
-      border-radius: 0.65rem;
-      padding: 3px 6px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-      border: 1px solid rgba(226, 232, 240, 0.9);
+      background-color: #ffffff;
+      border-radius: 0.75rem;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
       flex-shrink: 0;
-      box-sizing: border-box;
+      transition: all 0.2s ease;
     }
-    .vista-logo-badge svg {
-      display: block;
+    .vista-logo-frame svg {
+      width: 100%;
       height: 100%;
-      width: auto;
-      max-width: 100%;
       object-fit: contain;
+      display: block;
     }
   </style>
 </head>
@@ -68,150 +63,131 @@
     const { useState, useEffect, useRef } = React;
 
     const FREE_STORAGE_LIMIT_MB = 1024; // 1 GB free bucket quota
+    const GITHUB_LIVE_BASE_URL = "https://vistaesglobal-crypto.github.io/vista-VMS/";
 
-    // Pristine vector graphic matching the uploaded artwork (1600x1000, 1.6:1 natural proportion)
-    function VistaLogo({ height = "h-8", className = "", containerClass = "" }) {
+    function VistaLogo({ className = "h-9", containerClass = "" }) {
       return (
-        <div className={`vista-logo-badge ${height} ${containerClass}`}>
+        <div className={`vista-logo-frame ${containerClass} p-1.5`}>
           <svg
             viewBox="0 0 1600 1000"
-            className={`${height} ${className} select-none`}
+            className={`${className} aspect-[16/10] select-none`}
             xmlns="http://www.w3.org/2000/svg"
-            style={{ aspectRatio: "16 / 10" }}
+            style={{ width: 'auto' }}
           >
-            {/* Crisp white backdrop for universal contrast */}
-            <rect width="1600" height="1000" fill="#ffffff" rx="36" />
-
-            {/* Swirl Pattern: Dots in accurate magenta -> purple -> cyan -> teal -> emerald gradient */}
+            <rect width="1600" height="1000" fill="#ffffff" rx="40" />
             <g transform="translate(10, 0)">
-              {/* Outer Swirl Ring */}
-              <circle cx="150" cy="240" r="28" fill="#a42683" />
-              <circle cx="204" cy="202" r="30" fill="#942686" />
-              <circle cx="266" cy="168" r="32" fill="#80288c" />
-              <circle cx="338" cy="138" r="33" fill="#692d93" />
-              <circle cx="418" cy="118" r="34" fill="#58329a" />
-              <circle cx="504" cy="112" r="34" fill="#4638a0" />
-              <circle cx="592" cy="122" r="33" fill="#3540a6" />
-              <circle cx="678" cy="148" r="31" fill="#254cac" />
-              <circle cx="756" cy="186" r="29" fill="#1b5eb2" />
-              <circle cx="828" cy="238" r="27" fill="#1475b6" />
-              <circle cx="890" cy="300" r="25" fill="#128cb8" />
-              <circle cx="938" cy="372" r="23" fill="#12a0b8" />
-              <circle cx="968" cy="454" r="21" fill="#16b1b3" />
-              <circle cx="980" cy="542" r="19" fill="#1fbeaa" />
-              <circle cx="976" cy="628" r="16" fill="#2ccaa0" />
+              {/* Outer Arc - Magenta to deep blue */}
+              <circle cx="160" cy="240" r="28" fill="#a82381" />
+              <circle cx="212" cy="204" r="30" fill="#912487" />
+              <circle cx="276" cy="168" r="32" fill="#7d288d" />
+              <circle cx="350" cy="138" r="34" fill="#692d93" />
+              <circle cx="434" cy="120" r="34" fill="#58329a" />
+              <circle cx="520" cy="116" r="34" fill="#4638a0" />
+              <circle cx="608" cy="128" r="33" fill="#3540a6" />
+              <circle cx="692" cy="154" r="32" fill="#254cac" />
+              <circle cx="770" cy="192" r="30" fill="#1b5eb2" />
+              <circle cx="842" cy="244" r="28" fill="#1475b6" />
+              <circle cx="902" cy="308" r="26" fill="#128cb8" />
+              <circle cx="948" cy="382" r="24" fill="#12a0b8" />
+              <circle cx="978" cy="466" r="22" fill="#16b1b3" />
+              <circle cx="988" cy="554" r="20" fill="#1fbeaa" />
+              <circle cx="984" cy="640" r="17" fill="#2ccaa0" />
 
-              {/* Second Layer Swirl */}
-              <circle cx="126" cy="336" r="28" fill="#982585" />
-              <circle cx="180" cy="294" r="30" fill="#84278c" />
-              <circle cx="248" cy="248" r="32" fill="#6c2d92" />
-              <circle cx="328" cy="208" r="34" fill="#553498" />
-              <circle cx="414" cy="180" r="34" fill="#403da0" />
-              <circle cx="504" cy="170" r="33" fill="#2e4ba6" />
-              <circle cx="594" cy="180" r="31" fill="#2060ad" />
-              <circle cx="680" cy="210" r="29" fill="#1679b3" />
-              <circle cx="758" cy="256" r="27" fill="#1292b6" />
-              <circle cx="824" cy="316" r="25" fill="#13a6b5" />
-              <circle cx="874" cy="388" r="22" fill="#1ab6ad" />
-              <circle cx="908" cy="468" r="19" fill="#26c2a1" />
-              <circle cx="920" cy="552" r="16" fill="#36cd93" />
+              {/* Mid Arc - Purple to teal */}
+              <circle cx="132" cy="336" r="29" fill="#9d2486" />
+              <circle cx="188" cy="296" r="31" fill="#84278c" />
+              <circle cx="260" cy="250" r="33" fill="#6c2d92" />
+              <circle cx="342" cy="210" r="35" fill="#553498" />
+              <circle cx="430" cy="184" r="35" fill="#403da0" />
+              <circle cx="522" cy="174" r="34" fill="#2e4ba6" />
+              <circle cx="612" cy="186" r="32" fill="#2060ad" />
+              <circle cx="698" cy="218" r="30" fill="#1679b3" />
+              <circle cx="776" cy="266" r="28" fill="#1292b6" />
+              <circle cx="842" cy="328" r="26" fill="#13a6b5" />
+              <circle cx="892" cy="402" r="23" fill="#1ab6ad" />
+              <circle cx="924" cy="484" r="20" fill="#26c2a1" />
+              <circle cx="934" cy="568" r="17" fill="#36cd93" />
 
-              {/* Third Layer Swirl */}
-              <circle cx="136" cy="450" r="30" fill="#8a278c" />
-              <circle cx="192" cy="400" r="32" fill="#702d91" />
-              <circle cx="260" cy="346" r="34" fill="#553498" />
-              <circle cx="340" cy="296" r="34" fill="#3c43a0" />
-              <circle cx="428" cy="260" r="33" fill="#2759a7" />
-              <circle cx="516" cy="244" r="31" fill="#1773af" />
-              <circle cx="602" cy="248" r="29" fill="#118eb3" />
-              <circle cx="682" cy="276" r="27" fill="#12a4b3" />
-              <circle cx="750" cy="324" r="24" fill="#1bb6ab" />
-              <circle cx="802" cy="390" r="21" fill="#28c49e" />
-              <circle cx="838" cy="466" r="18" fill="#38ce8f" />
-              <circle cx="850" cy="546" r="15" fill="#4cd87f" />
+              {/* Inner Arc - Violet to emerald green */}
+              <circle cx="140" cy="454" r="31" fill="#8d268b" />
+              <circle cx="198" cy="404" r="33" fill="#702d91" />
+              <circle cx="270" cy="350" r="35" fill="#553498" />
+              <circle cx="352" cy="300" r="35" fill="#3c43a0" />
+              <circle cx="442" cy="266" r="35" fill="#2759a7" />
+              <circle cx="532" cy="250" r="33" fill="#1773af" />
+              <circle cx="620" cy="256" r="31" fill="#118eb3" />
+              <circle cx="700" cy="286" r="28" fill="#12a4b3" />
+              <circle cx="768" cy="336" r="25" fill="#1bb6ab" />
+              <circle cx="820" cy="404" r="22" fill="#28c49e" />
+              <circle cx="854" cy="482" r="19" fill="#38ce8f" />
+              <circle cx="866" cy="564" r="16" fill="#4cd87f" />
 
-              {/* Inward Tail Curve */}
-              <circle cx="170" cy="568" r="30" fill="#732a90" />
-              <circle cx="226" cy="508" r="32" fill="#563398" />
-              <circle cx="298" cy="448" r="32" fill="#38499f" />
-              <circle cx="380" cy="394" r="31" fill="#2069a7" />
-              <circle cx="464" cy="354" r="29" fill="#138ab0" />
-              <circle cx="546" cy="334" r="26" fill="#11a4b1" />
-              <circle cx="624" cy="338" r="24" fill="#1bb5a9" />
-              <circle cx="692" cy="366" r="21" fill="#2ac39c" />
-              <circle cx="742" cy="414" r="18" fill="#3dce8b" />
-              <circle cx="772" cy="476" r="15" fill="#52d87b" />
+              {/* Tail sweeps */}
+              <circle cx="178" cy="574" r="31" fill="#752a90" />
+              <circle cx="236" cy="514" r="33" fill="#563398" />
+              <circle cx="310" cy="454" r="34" fill="#38499f" />
+              <circle cx="394" cy="400" r="33" fill="#2069a7" />
+              <circle cx="480" cy="360" r="31" fill="#138ab0" />
+              <circle cx="564" cy="340" r="28" fill="#11a4b1" />
+              <circle cx="644" cy="346" r="25" fill="#1bb5a9" />
+              <circle cx="712" cy="376" r="22" fill="#2ac39c" />
+              <circle cx="762" cy="426" r="19" fill="#3dce8b" />
+              <circle cx="790" cy="490" r="16" fill="#52d87b" />
 
-              {/* Lower Sweeps */}
-              <circle cx="232" cy="676" r="28" fill="#583298" />
-              <circle cx="290" cy="608" r="29" fill="#3a4ca0" />
-              <circle cx="362" cy="542" r="29" fill="#2171a8" />
-              <circle cx="438" cy="484" r="27" fill="#1295af" />
-              <circle cx="512" cy="440" r="24" fill="#14adae" />
-              <circle cx="582" cy="416" r="21" fill="#21bea5" />
-              <circle cx="644" cy="418" r="18" fill="#31cb97" />
-              <circle cx="690" cy="446" r="15" fill="#47d586" />
+              <circle cx="242" cy="684" r="30" fill="#593297" />
+              <circle cx="302" cy="616" r="31" fill="#3a4ca0" />
+              <circle cx="376" cy="550" r="31" fill="#2171a8" />
+              <circle cx="454" cy="492" r="29" fill="#1295af" />
+              <circle cx="530" cy="448" r="26" fill="#14adae" />
+              <circle cx="602" cy="424" r="23" fill="#21bea5" />
+              <circle cx="664" cy="428" r="19" fill="#31cb97" />
+              <circle cx="710" cy="458" r="16" fill="#47d586" />
 
-              {/* Lower Curve to Base */}
-              <circle cx="320" cy="770" r="26" fill="#3b50a2" />
-              <circle cx="372" cy="700" r="26" fill="#2177a9" />
-              <circle cx="436" cy="632" r="25" fill="#129daf" />
-              <circle cx="502" cy="572" r="22" fill="#15b5ab" />
-              <circle cx="564" cy="528" r="19" fill="#25c2a3" />
-              <circle cx="618" cy="502" r="16" fill="#37cd94" />
+              <circle cx="334" cy="780" r="28" fill="#3c51a2" />
+              <circle cx="388" cy="710" r="28" fill="#2177a9" />
+              <circle cx="454" cy="642" r="27" fill="#129daf" />
+              <circle cx="522" cy="582" r="24" fill="#15b5ab" />
+              <circle cx="586" cy="538" r="21" fill="#25c2a3" />
+              <circle cx="640" cy="514" r="18" fill="#37cd94" />
 
-              {/* Bottom Taper Dots */}
-              <circle cx="432" cy="842" r="23" fill="#207faa" />
-              <circle cx="480" cy="776" r="22" fill="#13a6ae" />
-              <circle cx="534" cy="712" r="20" fill="#19bca8" />
-              <circle cx="586" cy="656" r="17" fill="#2dc89c" />
-              <circle cx="632" cy="614" r="14" fill="#44d38c" />
+              <circle cx="448" cy="854" r="25" fill="#207faa" />
+              <circle cx="498" cy="788" r="24" fill="#13a6ae" />
+              <circle cx="554" cy="724" r="22" fill="#19bca8" />
+              <circle cx="608" cy="668" r="19" fill="#2dc89c" />
+              <circle cx="656" cy="626" r="16" fill="#44d38c" />
 
-              <circle cx="558" cy="880" r="19" fill="#15b2ac" />
-              <circle cx="600" cy="818" r="18" fill="#22c2a2" />
-              <circle cx="644" cy="756" r="16" fill="#34cd95" />
+              <circle cx="578" cy="892" r="21" fill="#15b2ac" />
+              <circle cx="622" cy="830" r="20" fill="#22c2a2" />
+              <circle cx="668" cy="768" r="18" fill="#34cd95" />
 
-              <circle cx="700" cy="872" r="16" fill="#2dc79b" />
-              <circle cx="732" cy="816" r="14" fill="#42d38e" />
-              <circle cx="838" cy="846" r="13" fill="#329657" />
-              <circle cx="930" cy="832" r="10" fill="#287a46" />
-              <circle cx="1016" cy="794" r="8" fill="#1d5f36" />
-              <circle cx="1090" cy="754" r="6" fill="#154728" />
+              <circle cx="724" cy="884" r="18" fill="#2dc79b" />
+              <circle cx="758" cy="828" r="15" fill="#42d38e" />
+
+              <circle cx="868" cy="858" r="15" fill="#329657" />
+              <circle cx="964" cy="844" r="12" fill="#287a46" />
+              <circle cx="1054" cy="804" r="10" fill="#1d5f36" />
+              <circle cx="1132" cy="764" r="8" fill="#154728" />
             </g>
 
-            {/* Bold Navy VISTA Typography */}
+            {/* Typography */}
             <g fill="#0b1736">
-              {/* V */}
-              <polygon points="520,300 622,300 706,490 788,300 890,300 758,590 652,590" />
-              {/* I */}
-              <rect x="924" y="300" width="96" height="290" />
-              {/* S */}
-              <path d="M1208,386 C1200,344 1166,330 1128,330 C1078,330 1056,354 1056,384 C1056,470 1222,430 1222,528 C1222,580 1176,598 1122,598 C1058,598 1016,568 1010,510 L1100,510 C1106,538 1128,552 1154,552 C1180,552 1194,540 1194,522 C1194,454 1028,484 1028,382 C1028,326 1074,294 1138,294 C1202,294 1236,332 1242,386 Z" />
-              {/* T */}
-              <polygon points="1248,300 1434,300 1434,352 1370,352 1370,590 1312,590 1312,352 1248,352" />
-              {/* A */}
-              <polygon points="1448,590 1534,300 1620,590 1560,590 1546,536 1492,536 1478,590" />
-              <polygon points="1502,494 1534,382 1536,382 1568,494" fill="#ffffff" />
+              <polygon points="525,298 628,298 710,490 792,298 895,298 764,592 656,592" />
+              <rect x="928" y="298" width="98" height="294" />
+              <path d="M1212,386 C1204,344 1170,330 1132,330 C1082,330 1060,354 1060,384 C1060,470 1226,430 1226,528 C1226,580 1180,598 1126,598 C1062,598 1020,568 1014,510 L1104,510 C1110,538 1132,552 1158,552 C1184,552 1198,540 1198,522 C1198,454 1032,484 1032,382 C1032,326 1078,294 1142,294 C1206,294 1240,332 1246,386 Z" />
+              <polygon points="1252,298 1438,298 1438,350 1374,350 1374,592 1316,592 1316,350 1252,350" />
+              <polygon points="1452,592 1538,298 1624,592 1564,592 1550,538 1496,538 1482,592" />
+              <polygon points="1506,496 1538,382 1540,382 1572,496" fill="#ffffff" />
             </g>
 
-            {/* TM Superscript */}
-            <text x="1378" y="294" fill="#0b1736" fontFamily="Inter, sans-serif" fontWeight="900" fontSize="62">
-              TM
-            </text>
-
-            {/* Innovation @ work Tagline */}
-            <text x="1440" y="726" textAnchor="end" fill="#000000" fontFamily="Inter, sans-serif" fontWeight="700" fontSize="96" letterSpacing="2">
-              Innovation
-            </text>
-            <text x="1440" y="850" textAnchor="end" fill="#000000" fontFamily="Inter, sans-serif" fontWeight="700" fontSize="96" letterSpacing="2">
-              @ work
-            </text>
+            <text x="1382" y="298" fill="#0b1736" fontFamily="Inter, Arial, sans-serif" fontWeight="900" fontSize="60">TM</text>
+            <text x="1440" y="728" textAnchor="end" fill="#000000" fontFamily="Inter, Arial, sans-serif" fontWeight="600" fontSize="96" letterSpacing="3">Innovation</text>
+            <text x="1440" y="852" textAnchor="end" fill="#000000" fontFamily="Inter, Arial, sans-serif" fontWeight="600" fontSize="96" letterSpacing="3">@ work</text>
           </svg>
         </div>
       );
     }
 
-    // Official system login credentials
+    // Official System Login Credentials
     const SYSTEM_ACCOUNTS = {
       superuser: {
         username: 'superuser',
@@ -237,7 +213,7 @@
         username: 'frontdesk',
         password: 'vista@gate',
         displayName: 'Front Desk',
-        subtitle: 'Front Desk & Gate Security',
+        subtitle: 'Front Desk & Gate Operations',
         role: 'Front Desk',
         badgeColor: 'bg-indigo-950 text-indigo-300 border-indigo-800',
         avatarBg: 'bg-indigo-600',
@@ -245,7 +221,7 @@
       }
     };
 
-    // Strict Employee / Host Master Roster (No Jose Panitha, No email, No phone numbers)
+    // Strict Cleaned Host Master Roster (No Jose Panitha, No email, No phone numbers)
     const OFFICIAL_EMPLOYEES = [
       { id: 'emp-101', employeeId: 'VES-0101', name: 'Magesh Kumar S', department: 'Indian Operations', designation: 'Head - Operations', role: 'Management / Host', active: true },
       { id: 'emp-102', employeeId: 'VES-0102', name: 'Mohan D', department: 'Operations', designation: 'Operations Lead', role: 'Management / Host', active: true },
@@ -360,42 +336,23 @@
         checkoutTime: null,
         isArchived: false,
         archivedRef: null
-      },
-      {
-        id: 'vis-1005',
-        badgeNumber: 'VES-2026-00045',
-        qrToken: 'TK_VES_3389_E5',
-        fullName: 'Deepak Chawla',
-        phone: '+91 98410 77665',
-        category: 'Client',
-        company: 'Apex Precision Engineering',
-        idType: 'Driver License',
-        idLast4: '3411',
-        photo: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=60',
-        photoSizeBytes: 140000,
-        hostName: 'Naveen Kumar',
-        hostEmpId: 'VES-0106',
-        department: 'Engineering & Projects',
-        purpose: 'Factory Automation Blueprint Review',
-        assets: 'HP ZBook Studio (S/N: 5CG921)',
-        vehicleType: '4-Wheeler',
-        vehicleNumber: 'KA-01-MJ-4411',
-        gatePass: '',
-        status: 'Pre-Registered',
-        checkinTime: null,
-        checkoutTime: null,
-        isArchived: false,
-        archivedRef: null
       }
     ];
 
     function App() {
-      const [viewMode, setViewMode] = useState('internal'); // default to internal to inspect dashboard
-      
-      // Authentication State
-      const [currentUser, setCurrentUser] = useState(SYSTEM_ACCOUNTS.superuser);
+      // 1. STRICT ROUTING: Default is strictly 'public' (visitor kiosk)
+      // Only switches to internal if URL explicitly requests hash #portal or #login
+      const [viewMode, setViewMode] = useState(() => {
+        const hash = window.location.hash.toLowerCase();
+        return (hash.includes('portal') || hash.includes('login') || hash.includes('admin')) ? 'internal' : 'public';
+      });
+
+      // 2. HARD AUTHENTICATION WALL: Default is strictly NULL.
+      // Zero unauthenticated access to the dashboard.
+      const [currentUser, setCurrentUser] = useState(null);
       const [loginUsername, setLoginUsername] = useState('');
       const [loginPassword, setLoginPassword] = useState('');
+      const [showPassword, setShowPassword] = useState(false);
       const [loginError, setLoginError] = useState('');
 
       const [activeTab, setActiveTab] = useState('dashboard');
@@ -409,7 +366,7 @@
       const [toast, setToast] = useState(null);
 
       // Storage Outage Simulation & Metric State
-      const [simulatedMediaMB, setSimulatedMediaMB] = useState(48.5); // base healthy storage
+      const [simulatedMediaMB, setSimulatedMediaMB] = useState(48.5);
       const [dismissStorageBanner, setDismissStorageBanner] = useState(false);
 
       // Public Registration Multi-Step State
@@ -457,6 +414,21 @@
       // Standee Entrance QR Modal
       const [showStandeeModal, setShowStandeeModal] = useState(false);
 
+      // Listen to browser URL hash changes for robust routing
+      useEffect(() => {
+        const handleHashChange = () => {
+          const hash = window.location.hash.toLowerCase();
+          if (hash.includes('portal') || hash.includes('login') || hash.includes('admin')) {
+            setViewMode('internal');
+          } else {
+            setViewMode('public');
+            setRegStep(1);
+          }
+        };
+        window.addEventListener('hashchange', handleHashChange);
+        return () => window.removeEventListener('hashchange', handleHashChange);
+      }, []);
+
       // Dynamic Storage Calculations
       const dbRecordsSizeMB = Number(((visits.length * 1.2) / 1024).toFixed(3));
       const activePhotosMB = visits.filter(v => !v.isArchived && v.photo !== 'ARCHIVED').length * 0.135;
@@ -467,7 +439,30 @@
       const isWarning = storagePercent >= 75 && storagePercent < 90;
       const isCritical = storagePercent >= 90;
 
-      // Dynamic QR Code generation for QR modal
+      // QR Code Generator for Standee (Strictly targets the Public Registration Form)
+      useEffect(() => {
+        if (showStandeeModal) {
+          const timer = setTimeout(() => {
+            const container = document.getElementById('standee-qr-target');
+            if (container && window.QRCode) {
+              container.innerHTML = '';
+              // Strictly encode the registration URL
+              const regUrl = window.location.href.split('#')[0] + '#register';
+              new QRCode(container, {
+                text: regUrl,
+                width: 200,
+                height: 200,
+                colorDark: '#0284c7',
+                colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.H
+              });
+            }
+          }, 120);
+          return () => clearTimeout(timer);
+        }
+      }, [showStandeeModal]);
+
+      // QR Code Generator for Pass Modal
       useEffect(() => {
         if (showQrModal && qrModalVisitor) {
           const timer = setTimeout(() => {
@@ -488,33 +483,12 @@
         }
       }, [showQrModal, qrModalVisitor]);
 
-      // Dynamic Standee Entrance QR
-      useEffect(() => {
-        if (showStandeeModal) {
-          const timer = setTimeout(() => {
-            const container = document.getElementById('standee-qr-target');
-            if (container && window.QRCode) {
-              container.innerHTML = '';
-              new QRCode(container, {
-                text: window.location.href.split('#')[0],
-                width: 200,
-                height: 200,
-                colorDark: '#0284c7',
-                colorLight: '#ffffff',
-                correctLevel: QRCode.CorrectLevel.H
-              });
-            }
-          }, 120);
-          return () => clearTimeout(timer);
-        }
-      }, [showStandeeModal]);
-
-      // Re-initialize Lucide Icons after renders
+      // Initialize Lucide Icons
       useEffect(() => {
         if (window.lucide) {
           window.lucide.createIcons();
         }
-      }, [viewMode, currentUser, activeTab, regStep, visits, verifiedVisitor, showPreRegModal, showQrModal, showStandeeModal, storagePercent]);
+      }, [viewMode, currentUser, activeTab, regStep, visits, verifiedVisitor, showPreRegModal, showQrModal, showStandeeModal, storagePercent, showPassword]);
 
       const showToast = (title, text) => {
         const item = { id: Date.now(), title, text, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
@@ -523,6 +497,7 @@
         setTimeout(() => setToast(null), 5000);
       };
 
+      // Strict Authentication Logic
       const handleLogin = (e) => {
         if (e) e.preventDefault();
         setLoginError('');
@@ -535,26 +510,28 @@
           setLoginPassword('');
           showToast('AUTHENTICATED', `Welcome back, ${account.displayName}! Access granted as ${account.role}.`);
         } else {
-          setLoginError('Invalid username or password. Check credentials and retry.');
+          setLoginError('Invalid credentials. Check username & password and retry.');
         }
       };
 
-      const handleQuickLogin = (roleKey) => {
+      const handleQuickFill = (roleKey) => {
         const account = SYSTEM_ACCOUNTS[roleKey];
         if (account) {
-          setCurrentUser(account);
-          setLoginUsername('');
-          setLoginPassword('');
+          setLoginUsername(account.username);
+          setLoginPassword(account.password);
           setLoginError('');
-          showToast('AUTHENTICATED', `Logged in as ${account.displayName}`);
         }
       };
 
       const handleLogout = () => {
         setCurrentUser(null);
-        showToast('SESSION TERMINATED', 'You have been signed out safely.');
+        setLoginUsername('');
+        setLoginPassword('');
+        setLoginError('');
+        showToast('SESSION TERMINATED', 'You have been signed out. Dashboard locked.');
       };
 
+      // Camera Capture with WebP compression
       const startCamera = async () => {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({
@@ -582,7 +559,7 @@
           }));
           setIsCompressing(false);
           setCameraActive(false);
-        }, 500);
+        }, 600);
       };
 
       const captureLiveWebcam = () => {
@@ -818,28 +795,24 @@
         doc.save(`VISTA_Visitor_Register_${new Date().toISOString().slice(0, 10)}.pdf`);
       };
 
-      // Safe Purge: Exports metadata to backup then frees up MBs
       const executeArchivalPurge = () => {
-        exportExcelReport(); // Auto-backup first
+        exportExcelReport();
         setVisits(prev => prev.map(v => ({
           ...v,
           photo: 'ARCHIVED',
           isArchived: true,
           archivedRef: 'ARCHIVE_VES_' + new Date().toISOString().slice(0, 7)
         })));
-        setSimulatedMediaMB(12.4); // Reset media storage down to healthy minimal baseline
+        setSimulatedMediaMB(12.4);
         setDismissStorageBanner(false);
         showToast('STORAGE PURGED SAFELY', 'Heavy image binaries archived & purged. Storage restored to 12.4 MB!');
       };
 
-      // Metrics & Calculations
       const totalVisitorsAllTime = visits.length + 12840;
       const todayVisitorsSeq = visits.filter(v => v.checkinTime && v.checkinTime.startsWith('2026-09-24')).length + 24;
       const currentlyInside = visits.filter(v => v.status === 'Checked-In');
       const preRegistered = visits.filter(v => v.status === 'Pre-Registered');
-      const checkedOut = visits.filter(v => v.status === 'Checked-Out');
 
-      // Filtered Directory
       const filteredVisits = visits.filter(v => {
         const matchesSearch = 
           v.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -876,72 +849,50 @@
           {/* Top Bar Navigation */}
           <header className="bg-slate-950 border-b border-slate-800 px-4 py-2 flex flex-wrap items-center justify-between text-xs sticky top-0 z-40">
             <div className="flex items-center gap-3">
-              <VistaLogo height="h-9" containerClass="shadow-md" />
+              <VistaLogo className="h-8" containerClass="border border-slate-700/60 shadow-sm" />
               <div className="border-l border-slate-800 pl-3">
                 <span className="font-bold text-white text-sm tracking-tight block">VISTA Engg Solutions Private Limited</span>
                 <span className="text-[10px] text-slate-400">Visitor Management System • Free Cloud Architecture</span>
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5 mt-2 sm:mt-0">
-              {/* Storage Quick Pill */}
-              <button
-                onClick={() => {
-                  setViewMode('internal');
-                  if (currentUser) setActiveTab('archival');
-                }}
-                title="View Cloud Storage Usage & Outage Status"
-                className={`flex items-center gap-2 px-2.5 py-1 rounded-lg border font-mono text-[11px] transition ${
-                  isCritical ? 'bg-rose-950 text-rose-300 border-rose-700 animate-pulse' :
-                  isWarning ? 'bg-amber-950 text-amber-300 border-amber-700' :
-                  'bg-slate-900 text-emerald-400 border-slate-800'
-                }`}
-              >
-                <i data-lucide="hard-drive" className="w-3.5 h-3.5"></i>
-                <span>Storage: {totalStorageUsedMB} MB ({storagePercent}%)</span>
-              </button>
-
-              {/* Environment Switcher */}
-              <div className="bg-slate-900 p-0.5 rounded-lg border border-slate-800 flex items-center">
-                <button
-                  onClick={() => { setViewMode('public'); setRegStep(1); }}
-                  className={`px-3 py-1 rounded-md font-medium transition flex items-center gap-1.5 ${viewMode === 'public' ? 'bg-sky-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
-                >
-                  <i data-lucide="smartphone" className="w-3.5 h-3.5"></i>
-                  <span>Public QR Registration</span>
-                </button>
-                <button
-                  onClick={() => setViewMode('internal')}
-                  className={`px-3 py-1 rounded-md font-medium transition flex items-center gap-1.5 ${viewMode === 'internal' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
-                >
-                  <i data-lucide="shield-check" className="w-3.5 h-3.5"></i>
-                  <span>Security & Staff Portal</span>
-                </button>
-              </div>
-
-              {/* Entrance Standee QR Modal Button */}
+            <div className="flex items-center gap-2 mt-2 sm:mt-0">
+              {/* Entrance Gate Standee QR (Always creates QR targeting the Registration Form) */}
               <button
                 onClick={() => setShowStandeeModal(true)}
                 className="bg-sky-700 hover:bg-sky-600 text-white px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1.5 shadow transition text-xs"
-                title="View Entrance Gate QR Poster"
+                title="View Entrance Gate QR Poster for Visitors"
               >
-                <i data-lucide="camera" className="w-3.5 h-3.5"></i>
-                <span className="hidden md:inline">Gate Standee QR</span>
+                <i data-lucide="qr-code" className="w-3.5 h-3.5"></i>
+                <span>Entrance Standee QR</span>
               </button>
 
-              {/* Direct QR Pass Tester Button */}
-              <button
-                onClick={() => {
-                  setQrModalVisitor(visits[0]);
-                  setShowQrModal(true);
-                }}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 shadow transition text-xs"
-              >
-                <i data-lucide="qr-code" className="w-4 h-4"></i>
-                <span>Test QR Code</span>
-              </button>
+              {/* View Selector with Clear Visual State */}
+              <div className="bg-slate-900 p-0.5 rounded-lg border border-slate-800 flex items-center">
+                <button
+                  onClick={() => { 
+                    window.location.hash = '#register';
+                    setViewMode('public'); 
+                    setRegStep(1); 
+                  }}
+                  className={`px-3 py-1 rounded-md font-medium transition flex items-center gap-1.5 ${viewMode === 'public' ? 'bg-sky-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
+                >
+                  <i data-lucide="smartphone" className="w-3.5 h-3.5"></i>
+                  <span>Visitor Registration</span>
+                </button>
+                <button
+                  onClick={() => {
+                    window.location.hash = '#portal';
+                    setViewMode('internal');
+                  }}
+                  className={`px-3 py-1 rounded-md font-medium transition flex items-center gap-1.5 ${viewMode === 'internal' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
+                >
+                  <i data-lucide="shield-check" className="w-3.5 h-3.5"></i>
+                  <span>Staff Portal</span>
+                </button>
+              </div>
 
-              {/* Logged in User Indicator & Sign Out */}
+              {/* Authenticated User Status & Logout */}
               {viewMode === 'internal' && currentUser && (
                 <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
                   <div className="flex items-center gap-1.5 bg-slate-900 py-1 px-2.5 rounded-lg border border-slate-800">
@@ -960,8 +911,8 @@
             </div>
           </header>
 
-          {/* PERSISTENT MAIN PAGE OUTAGE ALERT BANNER */}
-          {viewMode === 'internal' && (isWarning || isCritical) && !dismissStorageBanner && (
+          {}
+          {viewMode === 'internal' && currentUser && (isWarning || isCritical) && !dismissStorageBanner && (
             <div className={`px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs border-b z-30 transition shadow-lg ${
               isCritical 
                 ? 'bg-rose-950/95 border-rose-700 text-rose-200' 
@@ -977,20 +928,14 @@
                   </span>
                   <p className="text-[11px] opacity-90 mt-0.5">
                     Current Usage: <strong>{totalStorageUsedMB} MB / {FREE_STORAGE_LIMIT_MB} MB ({storagePercent}%)</strong>. 
-                    Only <strong>{remainingStorageMB} MB</strong> remaining. New visitor photo uploads will fail once 100% is reached.
+                    Only <strong>{remainingStorageMB} MB</strong> remaining.
                   </p>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => {
-                    if (currentUser && currentUser.canPurge) {
-                      setActiveTab('archival');
-                    } else {
-                      showToast('PERMISSION REQUIRED', 'Login as Super User or Admin to purge storage.');
-                    }
-                  }}
+                  onClick={() => setActiveTab('archival')}
                   className={`font-bold px-3 py-1.5 rounded-lg text-xs shadow flex items-center gap-1.5 ${
                     isCritical ? 'bg-rose-600 hover:bg-rose-500 text-white' : 'bg-amber-600 hover:bg-amber-500 text-white'
                   }`}
@@ -1009,7 +954,6 @@
             </div>
           )}
 
-          {/* VIEW 1: Public Visitor Flow */}
           {}
           {viewMode === 'public' && (
             <main className="flex-1 flex items-center justify-center p-4 bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
@@ -1018,7 +962,7 @@
                 {/* Corporate Header - Counters ONLY visible on Step 1 (Welcome Screen) */}
                 <div className="bg-gradient-to-r from-blue-950 via-slate-900 to-slate-950 p-6 border-b border-slate-800 text-center relative">
                   <div className="flex justify-center mb-3">
-                    <VistaLogo height="h-14" containerClass="shadow-xl" />
+                    <VistaLogo className="h-12" containerClass="border border-slate-200/40 shadow-xl" />
                   </div>
                   <h1 className="text-base font-bold text-white tracking-tight">VISTA Engg Solutions Private Limited</h1>
                   <p className="text-sky-300 text-xs mt-0.5 font-medium">Smart Visitor Entry & Digital QR Pass</p>
@@ -1200,7 +1144,7 @@
                   </div>
                 )}
 
-                {/* Step 3: Visit & Host Details */}
+                {/* Step 3: Host Details */}
                 {regStep === 3 && (
                   <div className="p-6 space-y-4">
                     <div className="flex justify-between items-center border-b border-slate-800 pb-3">
@@ -1224,7 +1168,6 @@
                         </select>
                       </div>
 
-                      {/* Display Selected Host Card */}
                       <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] space-y-1">
                         <div className="flex justify-between">
                           <span className="text-slate-400">Host:</span>
@@ -1287,7 +1230,7 @@
                   </div>
                 )}
 
-                {/* Step 4: Assets, Vehicle & Gate Pass */}
+                {/* Step 4: Assets & Vehicle */}
                 {regStep === 4 && (
                   <div className="p-6 space-y-4">
                     <div className="flex justify-between items-center border-b border-slate-800 pb-3">
@@ -1480,10 +1423,9 @@
                       <p className="text-slate-400 text-xs mt-0.5">Show this digital QR pass to the Security Desk at the entrance gate.</p>
                     </div>
 
-                    {/* Official Corporate Badge Card with pristine logo */}
                     <div className="bg-slate-950 border border-sky-800/60 rounded-2xl p-5 text-left shadow-2xl relative overflow-hidden">
                       <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-                        <VistaLogo height="h-8" containerClass="shadow" />
+                        <VistaLogo className="h-7" containerClass="border border-slate-300" />
                         <span className="text-xs font-mono font-bold bg-sky-950 text-sky-400 border border-sky-800 px-2 py-0.5 rounded">
                           {generatedPass.badgeNumber}
                         </span>
@@ -1500,7 +1442,6 @@
                         </div>
                       </div>
 
-                      {/* Cryptographic QR Token */}
                       <div className="bg-white p-3 rounded-xl flex flex-col items-center justify-center my-2">
                         <div id="pass-qr-target"></div>
                         <span className="text-[10px] text-slate-600 font-mono mt-1 font-semibold">
@@ -1548,22 +1489,20 @@
             </main>
           )}
 
-          {/* VIEW 2: Internal Security & Staff Portal */}
           {}
           {viewMode === 'internal' && (
             <div className="flex-1 flex flex-col md:flex-row bg-slate-900 overflow-hidden">
               
-              {/* Conditional Authentication Gate */}
+              {/* HARD LOGIN WALL: If currentUser is null, NOTHING except login card renders */}
               {!currentUser ? (
-                /* Dedicated Login Box */
                 <div className="flex-1 flex items-center justify-center p-6 bg-gradient-to-tr from-slate-950 via-slate-900 to-slate-950">
                   <div className="w-full max-w-md bg-slate-950 border border-slate-800 rounded-3xl p-8 shadow-2xl space-y-6">
                     <div className="text-center space-y-3">
                       <div className="flex justify-center">
-                        <VistaLogo height="h-16" containerClass="shadow-2xl" />
+                        <VistaLogo className="h-14" containerClass="border border-slate-200/50 shadow-xl" />
                       </div>
                       <h2 className="text-xl font-bold text-white tracking-tight">Security & Staff Portal</h2>
-                      <p className="text-xs text-slate-400">VISTA Engg Solutions Private Limited</p>
+                      <p className="text-xs text-slate-400">Strictly Authorized Personnel Only</p>
                     </div>
 
                     {loginError && (
@@ -1588,14 +1527,24 @@
 
                       <div>
                         <label className="block text-slate-300 font-semibold mb-1">Password</label>
-                        <input
-                          type="password"
-                          required
-                          placeholder="••••••••••••"
-                          value={loginPassword}
-                          onChange={(e) => setLoginPassword(e.target.value)}
-                          className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-sky-500 font-mono"
-                        />
+                        <div className="relative">
+                          <input
+                            type={showPassword ? "text" : "password"}
+                            required
+                            placeholder="••••••••••••"
+                            value={loginPassword}
+                            onChange={(e) => setLoginPassword(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-3.5 pr-10 py-2.5 text-white focus:outline-none focus:border-sky-500 font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-3 top-3 text-slate-400 hover:text-slate-200"
+                            tabIndex="-1"
+                          >
+                            <i data-lucide={showPassword ? "eye-off" : "eye"} className="w-4 h-4"></i>
+                          </button>
+                        </div>
                       </div>
 
                       <button
@@ -1607,15 +1556,15 @@
                       </button>
                     </form>
 
-                    {/* Quick Credentials Test Panel */}
+                    {/* Quick Credentials Helper for Admin Testing */}
                     <div className="pt-4 border-t border-slate-800 space-y-2">
                       <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block text-center">
-                        Quick 1-Click Role Login (Instant Testing)
+                        Quick-Fill Credentials (Click to prefill)
                       </span>
                       <div className="grid grid-cols-3 gap-2 text-[11px]">
                         <button
                           type="button"
-                          onClick={() => handleQuickLogin('superuser')}
+                          onClick={() => handleQuickFill('superuser')}
                           className="bg-slate-900 hover:bg-slate-800 border border-slate-800 p-2 rounded-xl text-center transition"
                         >
                           <span className="font-bold text-emerald-400 block text-xs">Super User</span>
@@ -1623,15 +1572,15 @@
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleQuickLogin('admin')}
+                          onClick={() => handleQuickFill('admin')}
                           className="bg-slate-900 hover:bg-slate-800 border border-slate-800 p-2 rounded-xl text-center transition"
                         >
                           <span className="font-bold text-sky-400 block text-xs">Admin</span>
-                          <span className="text-[9px] text-slate-400">System</span>
+                          <span className="text-[9px] text-slate-400">Management</span>
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleQuickLogin('frontdesk')}
+                          onClick={() => handleQuickFill('frontdesk')}
                           className="bg-slate-900 hover:bg-slate-800 border border-slate-800 p-2 rounded-xl text-center transition"
                         >
                           <span className="font-bold text-indigo-400 block text-xs">Front Desk</span>
@@ -1648,17 +1597,15 @@
                   </div>
                 </div>
               ) : (
-                /* Authenticated Dashboard Experience */
+                /* Authenticated Staff Workspace */
                 <React.Fragment>
                   {/* Internal Sidebar */}
                   <aside className="w-full md:w-64 bg-slate-950 border-r border-slate-800 flex flex-col p-4 text-xs">
                     
-                    {/* Sidebar Brand Card with pristine logo */}
                     <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3 mb-3 flex items-center justify-center">
-                      <VistaLogo height="h-10" containerClass="w-full justify-center shadow" />
+                      <VistaLogo className="h-9 w-auto" containerClass="w-full border border-slate-300" />
                     </div>
 
-                    {/* Logged in User Card */}
                     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 mb-4 flex items-center justify-between">
                       <div className="flex items-center gap-3 overflow-hidden">
                         <div className={`w-9 h-9 ${currentUser.avatarBg} text-white rounded-xl flex items-center justify-center font-bold text-sm shadow shrink-0`}>
@@ -1674,7 +1621,7 @@
                       </div>
                       <button
                         onClick={handleLogout}
-                        title="Sign Out / Switch User"
+                        title="Sign Out / Lock Portal"
                         className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition shrink-0"
                       >
                         <i data-lucide="log-out" className="w-4 h-4"></i>
@@ -1730,7 +1677,6 @@
                         <span>Export Excel & PDF</span>
                       </button>
 
-                      {/* Storage & Outage Management Tab */}
                       <button
                         onClick={() => setActiveTab('archival')}
                         className={`w-full flex items-center justify-between px-3 py-2 rounded-lg font-medium transition ${
@@ -1755,7 +1701,7 @@
                       </button>
                     </nav>
 
-                    <div className="pt-3 border-t border-slate-800">
+                    <div className="pt-3 border-t border-slate-800 space-y-2">
                       <button
                         onClick={() => setShowPreRegModal(true)}
                         className="w-full bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-bold py-2.5 rounded-xl shadow flex items-center justify-center gap-2 text-xs"
@@ -1763,13 +1709,20 @@
                         <i data-lucide="user-plus" className="w-4 h-4"></i>
                         <span>Pre-Register Guest</span>
                       </button>
+
+                      <button
+                        onClick={handleLogout}
+                        className="w-full bg-slate-900 hover:bg-rose-950 hover:text-rose-300 text-slate-400 font-semibold py-2 rounded-xl border border-slate-800 flex items-center justify-center gap-2 text-xs transition"
+                      >
+                        <i data-lucide="lock" className="w-3.5 h-3.5"></i>
+                        <span>Sign Out & Lock</span>
+                      </button>
                     </div>
                   </aside>
 
                   {/* Main Content Area */}
                   <div className="flex-1 flex flex-col overflow-y-auto max-h-[calc(100vh-50px)] bg-slate-900">
                     
-                    {/* Secondary Subbar */}
                     <div className="bg-slate-950/70 border-b border-slate-800 px-6 py-3 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-30 backdrop-blur">
                       <div>
                         <h2 className="text-sm font-bold text-white uppercase tracking-wide">
@@ -1795,10 +1748,8 @@
                     <div className="p-6 space-y-6">
 
                       {/* Tab 1: Dashboard & Analytics */}
-                      {}
                       {activeTab === 'dashboard' && (
                         <div className="space-y-6">
-                          {/* Metric KPI Cards */}
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                             <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 shadow">
                               <span className="text-[11px] font-semibold text-slate-400 block">Total Campus Footfall</span>
@@ -1824,7 +1775,6 @@
                               <span className="text-[10px] text-slate-400 mt-1 block">Awaiting gate scan</span>
                             </div>
 
-                            {/* Storage Gauge Card in KPI Grid */}
                             <div className={`p-4 rounded-2xl border shadow transition ${
                               isCritical ? 'bg-rose-950/80 border-rose-700' :
                               isWarning ? 'bg-amber-950/80 border-amber-700' :
@@ -1840,10 +1790,7 @@
                             </div>
                           </div>
 
-                          {/* Analytics Charts & Arrival Notifications */}
                           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            
-                            {/* Category Breakdown */}
                             <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800">
                               <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-4 flex items-center justify-between">
                                 <span>Footfall by Category</span>
@@ -1889,7 +1836,6 @@
                               </div>
                             </div>
 
-                            {/* Department Distribution */}
                             <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800">
                               <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-4 flex items-center justify-between">
                                 <span>Visits by Department</span>
@@ -1915,7 +1861,6 @@
                               </div>
                             </div>
 
-                            {/* Live Arrival Notifications Feed */}
                             <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 flex flex-col">
                               <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-3 flex items-center justify-between">
                                 <span>Live Arrival Alerts</span>
@@ -1938,10 +1883,8 @@
                       )}
 
                       {/* Tab 2: Central Gate Log */}
-                      {}
                       {activeTab === 'visitors' && (
                         <div className="bg-slate-950 rounded-2xl border border-slate-800 p-5 space-y-4 shadow">
-                          {/* Search Bar & Categorical Filters */}
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <div className="relative">
                               <i data-lucide="search" className="w-4 h-4 absolute left-3 top-3 text-slate-500"></i>
@@ -1983,7 +1926,6 @@
                             </div>
                           </div>
 
-                          {/* Records Table */}
                           <div className="overflow-x-auto border border-slate-800 rounded-xl">
                             <table className="w-full text-left text-xs text-slate-300">
                               <thead className="bg-slate-900 text-slate-400 uppercase font-semibold border-b border-slate-800 text-[10px]">
@@ -2010,7 +1952,7 @@
                                       <td className="py-3 px-4">
                                         <div className="flex items-center gap-3">
                                           {v.photo === 'ARCHIVED' ? (
-                                            <div className="w-9 h-9 rounded-lg bg-slate-800 text-slate-400 font-mono text-[9px] flex items-center justify-center font-bold border border-slate-700" title="Binary purged to preserve free cloud limit">
+                                            <div className="w-9 h-9 rounded-lg bg-slate-800 text-slate-400 font-mono text-[9px] flex items-center justify-center font-bold border border-slate-700">
                                               ARCH
                                             </div>
                                           ) : (
@@ -2097,28 +2039,23 @@
                       )}
 
                       {/* Tab 3: Currently Inside */}
-                      {}
                       {activeTab === 'inside' && (
                         <div className="bg-slate-950 rounded-2xl border border-slate-800 p-5 space-y-4 shadow">
-                          <div className="flex justify-between items-center">
-                            <div>
-                              <h3 className="font-bold text-white text-sm">Visitors Currently On Campus ({currentlyInside.length})</h3>
-                              <p className="text-xs text-slate-400">Real-time gate tracking. Clicking check-out marks physical departure.</p>
-                            </div>
+                          <div>
+                            <h3 className="font-bold text-white text-sm">Visitors Currently On Campus ({currentlyInside.length})</h3>
+                            <p className="text-xs text-slate-400">Clicking check-out records physical gate departure.</p>
                           </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {currentlyInside.map(v => (
                               <div key={v.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
                                 <div>
-                                  <div className="flex items-start justify-between">
-                                    <div className="flex gap-3 items-center">
-                                      <img src={v.photo} alt={v.fullName} className="w-12 h-12 rounded-xl object-cover border border-sky-500" />
-                                      <div>
-                                        <h4 className="font-bold text-white text-sm">{v.fullName}</h4>
-                                        <span className="text-[11px] text-slate-400 block">{v.company} • {v.category}</span>
-                                        <span className="text-[10px] font-mono text-sky-400 font-bold">{v.badgeNumber}</span>
-                                      </div>
+                                  <div className="flex gap-3 items-center">
+                                    <img src={v.photo} alt={v.fullName} className="w-12 h-12 rounded-xl object-cover border border-sky-500" />
+                                    <div>
+                                      <h4 className="font-bold text-white text-sm">{v.fullName}</h4>
+                                      <span className="text-[11px] text-slate-400 block">{v.company} • {v.category}</span>
+                                      <span className="text-[10px] font-mono text-sky-400 font-bold">{v.badgeNumber}</span>
                                     </div>
                                   </div>
 
@@ -2157,20 +2094,17 @@
                         </div>
                       )}
 
-                      {/* Tab 4: QR Scanner */}
-                      {}
+                      {/* Tab 4: Gate QR Scanner */}
                       {activeTab === 'scan' && (
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                          {/* Left: Viewfinder & Input */}
                           <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 shadow space-y-5">
                             <div className="flex justify-between items-center">
                               <h3 className="font-bold text-white text-sm">Gate Pass QR Scanner</h3>
                               <span className="text-[10px] bg-sky-950 text-sky-400 border border-sky-800 px-2 py-0.5 rounded font-mono">
-                                Camera Active
+                                Camera Ready
                               </span>
                             </div>
 
-                            {/* Scanner Viewfinder Box */}
                             <div className="relative h-64 bg-slate-900 rounded-2xl overflow-hidden flex flex-col items-center justify-center border-2 border-slate-800 text-center p-4">
                               <div className="scan-line"></div>
                               <i data-lucide="scan" className="w-16 h-16 text-sky-400/40 mb-2"></i>
@@ -2178,7 +2112,6 @@
                               <span className="text-[10px] text-slate-500 mt-1">Laser barcode gun or camera supported</span>
                             </div>
 
-                            {/* Manual / Barcode Gun Input */}
                             <div className="space-y-2">
                               <label className="block text-xs font-semibold text-slate-300">
                                 Scan or Paste Cryptographic Token / Badge ID:
@@ -2207,28 +2140,8 @@
                                 </div>
                               )}
                             </div>
-
-                            {/* One-click Test Tokens */}
-                            <div className="pt-2 border-t border-slate-800">
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Quick Test Gate Tokens:</span>
-                              <div className="flex flex-wrap gap-2 text-[11px]">
-                                {visits.slice(0, 3).map(v => (
-                                  <button
-                                    key={v.id}
-                                    onClick={() => {
-                                      setScannedInput(v.qrToken);
-                                      handleTokenVerify(v.qrToken);
-                                    }}
-                                    className="bg-slate-900 hover:bg-slate-800 text-sky-400 px-2.5 py-1 rounded-lg border border-slate-800 font-mono"
-                                  >
-                                    {v.fullName.split(' ')[0]} ({v.badgeNumber})
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
                           </div>
 
-                          {/* Right: Pass Clearance Card */}
                           <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 shadow flex flex-col justify-between">
                             <div>
                               <h3 className="font-bold text-white text-sm mb-4">Pass Authorization & Clearance Details</h3>
@@ -2260,13 +2173,6 @@
                                       <span className="font-bold text-white">{verifiedVisitor.purpose}</span>
                                     </div>
                                   </div>
-
-                                  <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 text-xs space-y-1">
-                                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Logistics & Devices</span>
-                                    <p className="text-slate-300"><strong>Carried Assets:</strong> {verifiedVisitor.assets || 'None'}</p>
-                                    <p className="text-slate-300"><strong>Vehicle:</strong> {verifiedVisitor.vehicleType} {verifiedVisitor.vehicleNumber ? `[${verifiedVisitor.vehicleNumber}]` : ''}</p>
-                                    <p className="text-slate-300"><strong>Gate Pass #:</strong> {verifiedVisitor.gatePass || 'N/A'}</p>
-                                  </div>
                                 </div>
                               ) : (
                                 <div className="text-center py-16 text-slate-500 space-y-2">
@@ -2296,19 +2202,13 @@
                                     <span>Record Manual Departure Check-Out</span>
                                   </button>
                                 )}
-                                {verifiedVisitor.status === 'Checked-Out' && (
-                                  <div className="bg-slate-900 text-slate-400 py-3 rounded-xl text-center text-xs font-semibold border border-slate-800">
-                                    Pass Already Checked-Out
-                                  </div>
-                                )}
                               </div>
                             )}
                           </div>
                         </div>
                       )}
 
-                      {/* Tab 5: Host Personnel Master */}
-                      {}
+                      {/* Tab 5: Host Master Directory (Cleaned Roster) */}
                       {activeTab === 'employees' && (
                         <div className="bg-slate-950 rounded-2xl border border-slate-800 p-5 space-y-4 shadow">
                           <div className="flex justify-between items-center border-b border-slate-800 pb-3">
@@ -2363,13 +2263,12 @@
                       )}
 
                       {/* Tab 6: Reports & Export */}
-                      {}
                       {activeTab === 'reports' && (
                         <div className="bg-slate-950 rounded-2xl border border-slate-800 p-6 space-y-6 shadow">
                           <div>
                             <h3 className="font-bold text-white text-base">Export Gate Records & Official Compliance Audits</h3>
                             <p className="text-xs text-slate-400 mt-0.5">
-                              Browser-executed reports using SheetJS and jsPDF. Zero cloud compute cost, zero database egress fees.
+                              Zero cloud compute cost, zero database egress fees.
                             </p>
                           </div>
 
@@ -2414,11 +2313,8 @@
                       )}
 
                       {/* Tab 7: Storage & Outages Management */}
-                      {}
                       {activeTab === 'archival' && (
                         <div className="space-y-6">
-                          
-                          {/* Live Meter Header Card */}
                           <div className="bg-slate-950 rounded-2xl border border-slate-800 p-6 shadow space-y-5">
                             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
                               <div>
@@ -2427,21 +2323,18 @@
                                   <span>Cloud Storage Usage & Capacity Monitoring</span>
                                 </h3>
                                 <p className="text-xs text-slate-400 mt-0.5">
-                                  Supabase Free Tier Quota: 1,024 MB (1 GB) media storage + 500 MB database limits.
+                                  Free Tier Quota: 1,024 MB (1 GB) media storage + 500 MB database limits.
                                 </p>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <span className={`px-3 py-1 rounded-full text-xs font-bold border font-mono ${
-                                  isCritical ? 'bg-rose-950 text-rose-300 border-rose-800 animate-pulse' :
-                                  isWarning ? 'bg-amber-950 text-amber-300 border-amber-800' :
-                                  'bg-emerald-950 text-emerald-400 border-emerald-800'
-                                }`}>
-                                  {isCritical ? 'CRITICAL OUTAGE RISK' : isWarning ? 'WARNING THRESHOLD' : 'HEALTHY STATUS'}
-                                </span>
-                              </div>
+                              <span className={`px-3 py-1 rounded-full text-xs font-bold border font-mono ${
+                                isCritical ? 'bg-rose-950 text-rose-300 border-rose-800 animate-pulse' :
+                                isWarning ? 'bg-amber-950 text-amber-300 border-amber-800' :
+                                'bg-emerald-950 text-emerald-400 border-emerald-800'
+                              }`}>
+                                {isCritical ? 'CRITICAL OUTAGE RISK' : isWarning ? 'WARNING THRESHOLD' : 'HEALTHY STATUS'}
+                              </span>
                             </div>
 
-                            {/* Storage Progress Bar */}
                             <div className="space-y-2">
                               <div className="flex justify-between text-xs font-semibold">
                                 <span className="text-slate-300">Total Cloud Footprint Used:</span>
@@ -2459,46 +2352,14 @@
                                   style={{ width: `${storagePercent}%` }}
                                 ></div>
                               </div>
-                              <div className="flex justify-between text-[11px] text-slate-400 pt-1 font-mono">
-                                <span>0 MB</span>
-                                <span className="text-amber-400">75% Alert (768 MB)</span>
-                                <span className="text-rose-400">90% Outage (921 MB)</span>
-                                <span>1,024 MB</span>
-                              </div>
-                            </div>
-
-                            {/* Live Breakdown Cards */}
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 text-xs">
-                              <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800">
-                                <span className="text-slate-400 block text-[10px] uppercase font-bold">Photo Media Bucket</span>
-                                <span className="text-lg font-bold text-sky-400 font-mono mt-0.5 block">{simulatedMediaMB} MB</span>
-                                <span className="text-[10px] text-slate-500">WebP Compressed visitor images</span>
-                              </div>
-                              <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800">
-                                <span className="text-slate-400 block text-[10px] uppercase font-bold">Relational Database JSON</span>
-                                <span className="text-lg font-bold text-emerald-400 font-mono mt-0.5 block">{dbRecordsSizeMB} MB</span>
-                                <span className="text-[10px] text-slate-500">{visits.length} Visit logs & profiles</span>
-                              </div>
-                              <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800">
-                                <span className="text-slate-400 block text-[10px] uppercase font-bold">Available Free Headroom</span>
-                                <span className={`text-lg font-bold font-mono mt-0.5 block ${isCritical ? 'text-rose-400' : 'text-slate-200'}`}>
-                                  {remainingStorageMB} MB
-                                </span>
-                                <span className="text-[10px] text-slate-500">Remaining before upload rejection</span>
-                              </div>
                             </div>
                           </div>
 
-                          {/* Storage Alert Testing Simulator */}
                           <div className="bg-slate-950 rounded-2xl border border-slate-800 p-6 space-y-4">
                             <div className="flex items-center gap-2 text-sm font-bold text-white">
                               <i data-lucide="sliders" className="w-4 h-4 text-sky-400"></i>
-                              <span>Interactive Outage & Alert Simulator (Test Live Trigger States)</span>
+                              <span>Interactive Outage & Alert Simulator</span>
                             </div>
-                            <p className="text-xs text-slate-400">
-                              Click any scenario below to simulate different storage capacities and observe how the system alerts, dashboard tags, and outage banners react in real-time:
-                            </p>
-
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                               <button
                                 onClick={() => {
@@ -2507,27 +2368,25 @@
                                   showToast('SIMULATOR ACTIVATED', 'Set storage to 48.5 MB (Healthy Normal State).');
                                 }}
                                 className={`p-3 rounded-xl border text-left transition ${
-                                  !isWarning && !isCritical ? 'bg-emerald-950/60 border-emerald-700 text-emerald-200 ring-2 ring-emerald-500' : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-850'
+                                  !isWarning && !isCritical ? 'bg-emerald-950/60 border-emerald-700 text-emerald-200 ring-2 ring-emerald-500' : 'bg-slate-900 border-slate-800 text-slate-300'
                                 }`}
                               >
                                 <span className="font-bold text-emerald-400 block text-xs">1. Normal Healthy State</span>
                                 <span className="text-[11px] block mt-1 font-mono">48.5 MB (4.8%)</span>
-                                <span className="text-[10px] text-slate-400 block mt-0.5">Zero alerts, safe headroom</span>
                               </button>
 
                               <button
                                 onClick={() => {
                                   setSimulatedMediaMB(785.0);
                                   setDismissStorageBanner(false);
-                                  showToast('STORAGE WARNING TRIGGERED', 'Storage reached 785 MB (76% Amber Warning). Banner opened.');
+                                  showToast('STORAGE WARNING TRIGGERED', 'Storage reached 785 MB (76% Amber Warning).');
                                 }}
                                 className={`p-3 rounded-xl border text-left transition ${
-                                  isWarning ? 'bg-amber-950/60 border-amber-700 text-amber-200 ring-2 ring-amber-500' : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-850'
+                                  isWarning ? 'bg-amber-950/60 border-amber-700 text-amber-200 ring-2 ring-amber-500' : 'bg-slate-900 border-slate-800 text-slate-300'
                                 }`}
                               >
                                 <span className="font-bold text-amber-400 block text-xs">2. Warning State (&ge;75%)</span>
                                 <span className="text-[11px] block mt-1 font-mono">785.0 MB (76.7%)</span>
-                                <span className="text-[10px] text-amber-300/80 block mt-0.5">Triggers persistent amber alert</span>
                               </button>
 
                               <button
@@ -2537,41 +2396,33 @@
                                   showToast('CRITICAL OUTAGE RISK', 'Storage reached 942 MB (92% Red Outage Alert).');
                                 }}
                                 className={`p-3 rounded-xl border text-left transition ${
-                                  isCritical ? 'bg-rose-950/60 border-rose-700 text-rose-200 ring-2 ring-rose-500' : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-850'
+                                  isCritical ? 'bg-rose-950/60 border-rose-700 text-rose-200 ring-2 ring-rose-500' : 'bg-slate-900 border-slate-800 text-slate-300'
                                 }`}
                               >
                                 <span className="font-bold text-rose-400 block text-xs">3. Outage Critical State (&ge;90%)</span>
                                 <span className="text-[11px] block mt-1 font-mono">942.0 MB (92.0%)</span>
-                                <span className="text-[10px] text-rose-300/80 block mt-0.5">Imminent upload rejection alert</span>
                               </button>
                             </div>
                           </div>
 
-                          {/* Zero-Loss Safe Archival Action Panel */}
-                          <div className="bg-slate-950 rounded-2xl border border-rose-900/60 p-6 space-y-4 shadow">
-                            <div className="flex items-center gap-2 text-rose-400 font-bold text-sm">
-                              <i data-lucide="shield-alert" className="w-5 h-5"></i>
-                              <span>One-Click Zero-Loss Media Purge & Storage Reset</span>
-                            </div>
-                            <p className="text-xs text-slate-400 leading-relaxed">
-                              When you execute this purge, the system <strong>first automatically downloads an Excel gate audit backup</strong>, then frees cloud media storage by replacing heavy photo binaries with lightweight <code>[ARCHIVED]</code> tokens. The visitor records, badge numbers, check-in timestamps, and host links remain 100% intact.
-                            </p>
-
-                            <div className="pt-2 flex flex-col sm:flex-row gap-3 items-center">
+                          {currentUser.canPurge && (
+                            <div className="bg-slate-950 rounded-2xl border border-rose-900/60 p-6 space-y-4 shadow">
+                              <div className="flex items-center gap-2 text-rose-400 font-bold text-sm">
+                                <i data-lucide="shield-alert" className="w-5 h-5"></i>
+                                <span>Zero-Loss Media Purge & Storage Reset</span>
+                              </div>
+                              <p className="text-xs text-slate-400">
+                                Exports an Excel gate audit backup, then frees media storage by replacing photo binaries with <code>[ARCHIVED]</code> tokens.
+                              </p>
                               <button
                                 onClick={executeArchivalPurge}
-                                className="w-full sm:w-auto bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold py-3 px-6 rounded-xl text-xs shadow-lg transition flex items-center justify-center gap-2"
+                                className="bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold py-3 px-6 rounded-xl text-xs shadow-lg transition flex items-center justify-center gap-2"
                               >
                                 <i data-lucide="trash-2" className="w-4 h-4"></i>
                                 <span>Export Backup & Purge Media (Reset Storage)</span>
                               </button>
-
-                              <span className="text-[11px] text-slate-500">
-                                Protected: Only Super User & Admin roles have authorization.
-                              </span>
                             </div>
-                          </div>
-
+                          )}
                         </div>
                       )}
 
@@ -2583,8 +2434,125 @@
             </div>
           )}
 
+          {/* Modal: Entrance Gate Standee QR Code (Strictly encodes the public registration URL) */}
+          {showStandeeModal && (
+            <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+              <div className="bg-slate-950 border border-sky-800/80 rounded-3xl max-w-sm w-full p-6 shadow-2xl relative flex flex-col items-center text-center">
+                <button
+                  onClick={() => setShowStandeeModal(false)}
+                  className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-900 p-2 rounded-full border border-slate-800 transition"
+                  aria-label="Close"
+                >
+                  <i data-lucide="x" className="w-4 h-4"></i>
+                </button>
+
+                <div className="flex justify-center mb-2">
+                  <VistaLogo className="h-10" containerClass="border border-slate-200 shadow-xl" />
+                </div>
+                <h3 className="font-bold text-white text-base">VISTA Engg Solutions Pvt Ltd</h3>
+                <span className="text-xs text-sky-400 font-semibold">Security Gate Registration Standee</span>
+
+                <div className="bg-white p-4 rounded-2xl shadow-2xl border-4 border-sky-500/20 my-4 flex items-center justify-center">
+                  <div id="standee-qr-target"></div>
+                </div>
+
+                <p className="text-xs text-slate-300">
+                  Scan this QR code using your phone camera at reception or gate to self-register.
+                </p>
+
+                <div className="w-full pt-4 mt-2 border-t border-slate-800 flex gap-2">
+                  <button
+                    onClick={() => window.print()}
+                    className="flex-1 bg-slate-800 hover:bg-slate-700 py-2.5 rounded-xl text-xs font-semibold text-slate-200 flex items-center justify-center gap-1.5"
+                  >
+                    <i data-lucide="printer" className="w-3.5 h-3.5"></i>
+                    <span>Print Standee</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      window.location.hash = '#register';
+                      setViewMode('public');
+                      setRegStep(1);
+                      setShowStandeeModal(false);
+                    }}
+                    className="flex-1 bg-sky-600 hover:bg-sky-500 py-2.5 rounded-xl text-xs font-semibold text-white flex items-center justify-center gap-1.5"
+                  >
+                    <i data-lucide="smartphone" className="w-3.5 h-3.5"></i>
+                    <span>Open Form</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal: Interactive QR Pass Viewer */}
+          {showQrModal && qrModalVisitor && (
+            <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+              <div className="bg-slate-950 border border-sky-800/80 rounded-3xl max-w-sm w-full p-6 shadow-2xl relative overflow-hidden flex flex-col items-center">
+                <button
+                  onClick={() => setShowQrModal(false)}
+                  className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-900 p-2 rounded-full border border-slate-800 transition"
+                  aria-label="Close"
+                >
+                  <i data-lucide="x" className="w-4 h-4"></i>
+                </button>
+
+                <div className="text-center w-full pb-3 border-b border-slate-800/80 flex flex-col items-center">
+                  <VistaLogo className="h-7 mb-1.5" containerClass="border border-slate-300" />
+                  <h3 className="font-bold text-white text-sm">VISTA Engg Solutions Pvt Ltd</h3>
+                  <span className="text-[10px] text-sky-400 font-semibold tracking-wider uppercase">Official Visitor Gate Pass</span>
+                </div>
+
+                <div className="w-full flex items-center gap-3 my-4 bg-slate-900/90 p-3 rounded-2xl border border-slate-800">
+                  <img
+                    src={qrModalVisitor.photo}
+                    alt={qrModalVisitor.fullName}
+                    className="w-14 h-14 rounded-xl object-cover border-2 border-sky-500 shadow"
+                  />
+                  <div className="flex-1 overflow-hidden">
+                    <span className="font-bold text-white text-sm block truncate">{qrModalVisitor.fullName}</span>
+                    <span className="text-[11px] text-slate-400 block">{qrModalVisitor.company} • {qrModalVisitor.category}</span>
+                    <span className="text-[10px] text-emerald-400 font-mono font-bold block mt-0.5">
+                      Badge: {qrModalVisitor.badgeNumber}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-white p-4 rounded-2xl shadow-xl border-4 border-sky-500/20 flex flex-col items-center justify-center relative">
+                  <div id="interactive-qr-container" className="flex items-center justify-center"></div>
+                  <div className="mt-2 text-center">
+                    <span className="font-mono font-bold text-xs text-slate-900 block bg-slate-100 px-2.5 py-0.5 rounded">
+                      {qrModalVisitor.qrToken}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="w-full flex gap-2 mt-4">
+                  <button
+                    onClick={() => {
+                      if (!currentUser) {
+                        setViewMode('internal');
+                        setShowQrModal(false);
+                        showToast('LOGIN REQUIRED', 'Please log into the staff portal to test gate scans.');
+                        return;
+                      }
+                      setActiveTab('scan');
+                      setScannedInput(qrModalVisitor.qrToken);
+                      handleTokenVerify(qrModalVisitor.qrToken);
+                      setShowQrModal(false);
+                      showToast('SIMULATED GATE SCAN', `Scanned pass for ${qrModalVisitor.fullName}`);
+                    }}
+                    className="flex-1 bg-sky-600 hover:bg-sky-500 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow"
+                  >
+                    <i data-lucide="scan" className="w-3.5 h-3.5"></i>
+                    <span>Test In Gate Scanner</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Modal: Pre-Registration */}
-          {}
           {showPreRegModal && (
             <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
               <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
@@ -2660,7 +2628,7 @@
                   </div>
 
                   <div>
-                    <label className="block font-medium text-slate-300 mb-1">Host Staff Member (Cleaned Roster)</label>
+                    <label className="block font-medium text-slate-300 mb-1">Host Staff Member</label>
                     <select
                       value={preRegForm.hostEmpId}
                       onChange={(e) => setPreRegForm({ ...preRegForm, hostEmpId: e.target.value })}
@@ -2700,153 +2668,6 @@
                     </button>
                   </div>
                 </form>
-              </div>
-            </div>
-          )}
-
-          {/* Modal: Interactive QR Pass Viewer */}
-          {}
-          {showQrModal && qrModalVisitor && (
-            <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-              <div className="bg-slate-950 border border-sky-800/80 rounded-3xl max-w-sm w-full p-6 shadow-2xl relative overflow-hidden flex flex-col items-center">
-                
-                <button
-                  onClick={() => setShowQrModal(false)}
-                  className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-900 p-2 rounded-full border border-slate-800 transition"
-                  aria-label="Close"
-                >
-                  <i data-lucide="x" className="w-4 h-4"></i>
-                </button>
-
-                <div className="text-center w-full pb-3 border-b border-slate-800/80 flex flex-col items-center">
-                  <VistaLogo height="h-8" containerClass="mb-1.5 shadow" />
-                  <h3 className="font-bold text-white text-sm">VISTA Engg Solutions Pvt Ltd</h3>
-                  <span className="text-[10px] text-sky-400 font-semibold tracking-wider uppercase">Official Visitor Gate Pass</span>
-                </div>
-
-                <div className="w-full flex items-center gap-3 my-4 bg-slate-900/90 p-3 rounded-2xl border border-slate-800">
-                  <img
-                    src={qrModalVisitor.photo}
-                    alt={qrModalVisitor.fullName}
-                    className="w-14 h-14 rounded-xl object-cover border-2 border-sky-500 shadow"
-                  />
-                  <div className="flex-1 overflow-hidden">
-                    <span className="font-bold text-white text-sm block truncate">{qrModalVisitor.fullName}</span>
-                    <span className="text-[11px] text-slate-400 block">{qrModalVisitor.company} • {qrModalVisitor.category}</span>
-                    <span className="text-[10px] text-emerald-400 font-mono font-bold block mt-0.5">
-                      Badge: {qrModalVisitor.badgeNumber}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="bg-white p-4 rounded-2xl shadow-xl border-4 border-sky-500/20 flex flex-col items-center justify-center relative">
-                  <div id="interactive-qr-container" className="flex items-center justify-center"></div>
-                  <div className="mt-2 text-center">
-                    <span className="font-mono font-bold text-xs text-slate-900 block bg-slate-100 px-2.5 py-0.5 rounded">
-                      {qrModalVisitor.qrToken}
-                    </span>
-                    <span className="text-[10px] text-slate-500 font-medium block mt-0.5">
-                      Point phone camera or barcode gun to scan
-                    </span>
-                  </div>
-                </div>
-
-                <div className="w-full bg-slate-900/60 p-2.5 rounded-xl border border-slate-800 text-[11px] mt-4 space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Designated Host:</span>
-                    <span className="font-semibold text-slate-200">{qrModalVisitor.hostName}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Department:</span>
-                    <span className="text-sky-300 font-medium">{qrModalVisitor.department}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Current Status:</span>
-                    <span className={`font-bold ${qrModalVisitor.status === 'Checked-In' ? 'text-emerald-400' : 'text-amber-400'}`}>
-                      {qrModalVisitor.status}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="w-full flex gap-2 mt-4">
-                  <button
-                    onClick={() => {
-                      setViewMode('internal');
-                      setActiveTab('scan');
-                      setScannedInput(qrModalVisitor.qrToken);
-                      handleTokenVerify(qrModalVisitor.qrToken);
-                      setShowQrModal(false);
-                      showToast('SIMULATED GATE SCAN', `Scanned pass for ${qrModalVisitor.fullName}`);
-                    }}
-                    className="flex-1 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow"
-                  >
-                    <i data-lucide="scan" className="w-3.5 h-3.5"></i>
-                    <span>Test In Gate Scanner</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      const nextIndex = (visits.findIndex(v => v.id === qrModalVisitor.id) + 1) % visits.length;
-                      setQrModalVisitor(visits[nextIndex]);
-                    }}
-                    className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-1 border border-slate-700"
-                    title="Switch to next visitor pass"
-                  >
-                    <i data-lucide="skip-forward" className="w-3.5 h-3.5"></i>
-                    <span>Next Pass</span>
-                  </button>
-                </div>
-
-              </div>
-            </div>
-          )}
-
-          {/* Modal: Entrance Gate Standee QR Code */}
-          {}
-          {showStandeeModal && (
-            <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-              <div className="bg-slate-950 border border-sky-800/80 rounded-3xl max-w-sm w-full p-6 shadow-2xl relative flex flex-col items-center text-center">
-                <button
-                  onClick={() => setShowStandeeModal(false)}
-                  className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-900 p-2 rounded-full border border-slate-800 transition"
-                  aria-label="Close"
-                >
-                  <i data-lucide="x" className="w-4 h-4"></i>
-                </button>
-
-                <div className="flex justify-center mb-2">
-                  <VistaLogo height="h-12" containerClass="shadow-xl" />
-                </div>
-                <h3 className="font-bold text-white text-base">VISTA Engg Solutions Pvt Ltd</h3>
-                <span className="text-xs text-sky-400 font-semibold">Security Gate Registration Standee</span>
-
-                <div className="bg-white p-4 rounded-2xl shadow-2xl border-4 border-sky-500/20 my-4 flex items-center justify-center">
-                  <div id="standee-qr-target"></div>
-                </div>
-
-                <p className="text-xs text-slate-300">
-                  Scan this QR code using your phone camera at reception or gate to self-register.
-                </p>
-
-                <div className="w-full pt-4 mt-2 border-t border-slate-800 flex gap-2">
-                  <button
-                    onClick={() => window.print()}
-                    className="flex-1 bg-slate-800 hover:bg-slate-700 py-2.5 rounded-xl text-xs font-semibold text-slate-200 flex items-center justify-center gap-1.5"
-                  >
-                    <i data-lucide="printer" className="w-3.5 h-3.5"></i>
-                    <span>Print Standee</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setViewMode('public');
-                      setRegStep(1);
-                      setShowStandeeModal(false);
-                    }}
-                    className="flex-1 bg-sky-600 hover:bg-sky-500 py-2.5 rounded-xl text-xs font-semibold text-white flex items-center justify-center gap-1.5"
-                  >
-                    <i data-lucide="smartphone" className="w-3.5 h-3.5"></i>
-                    <span>Open Form</span>
-                  </button>
-                </div>
               </div>
             </div>
           )}
