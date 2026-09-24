@@ -13,6 +13,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
     body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #080c16; color: #f8fafc; }
@@ -104,15 +105,26 @@
     ];
 
     const STORAGE_KEY = "VISTA_VMS_VISITORS_DATA";
-    const TOTAL_QUOTA_MB = 5120; // 5 GB Tier
+    const SESSION_KEY = "VISTA_VMS_ACTIVE_SESSION";
+    const SYNC_TOPIC = "vista/vms/global_sync_channel_v1";
+    const TOTAL_QUOTA_MB = 5120; // 5 GB
 
     function App() {
       const queryParams = new URLSearchParams(window.location.search);
       const isVisitorParam = queryParams.get('mode') === 'visitor';
       const isStaffParam = queryParams.get('portal') === 'staff';
 
-      const [view, setView] = useState(isStaffParam ? 'staff' : 'visitor');
-      const [currentUser, setCurrentUser] = useState(null);
+      // 1. PERSISTENT AUTHENTICATION STATE (Fixes refresh logout bug)
+      const [currentUser, setCurrentUser] = useState(() => {
+        try {
+          const saved = localStorage.getItem(SESSION_KEY);
+          return saved ? JSON.parse(saved) : null;
+        } catch (e) {
+          return null;
+        }
+      });
+
+      const [view, setView] = useState(currentUser || isStaffParam ? 'staff' : 'visitor');
       const [activeTab, setActiveTab] = useState('dashboard');
 
       const [loginId, setLoginId] = useState('');
@@ -128,6 +140,7 @@
       const [cameraActive, setCameraActive] = useState(false);
       const [registeredBadge, setRegisteredBadge] = useState(null);
 
+      // Local master visitor log
       const [visitors, setVisitors] = useState(() => {
         try {
           const saved = localStorage.getItem(STORAGE_KEY);
@@ -137,26 +150,60 @@
         }
       });
 
+      const mqttClientRef = useRef(null);
+
+      // Save visitors to localStorage on update
       useEffect(() => {
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(visitors));
         } catch (e) {
-          console.error("Storage write error", e);
+          console.error("Storage save error", e);
         }
       }, [visitors]);
 
+      // 2. REAL-TIME CROSS-DEVICE CLOUD SYNC (Fixes mobile scan not reflecting on desktop)
       useEffect(() => {
-        const handleStorageSync = (e) => {
-          if (e.key === STORAGE_KEY && e.newValue) {
+        if (!window.mqtt) return;
+
+        const client = window.mqtt.connect("wss://broker.emqx.io:8084/mqtt", {
+          keepalive: 60,
+          clientId: 'vista_' + Math.random().toString(16).substring(2, 10),
+          clean: true,
+          reconnectPeriod: 2000
+        });
+
+        mqttClientRef.current = client;
+
+        client.on('connect', () => {
+          client.subscribe(SYNC_TOPIC, (err) => {
+            if (!err) console.log("Connected to Real-Time VISTA Gate Cloud Sync");
+          });
+        });
+
+        client.on('message', (topic, message) => {
+          if (topic === SYNC_TOPIC) {
             try {
-              setVisitors(JSON.parse(e.newValue));
-            } catch (err) {}
+              const payload = JSON.parse(message.toString());
+              if (payload.action === 'NEW_VISITOR') {
+                setVisitors(prev => {
+                  if (prev.some(v => v.id === payload.data.id)) return prev;
+                  return [payload.data, ...prev];
+                });
+              } else if (payload.action === 'CHECKOUT') {
+                setVisitors(prev => prev.map(v => v.id === payload.id ? { ...v, status: 'Checked Out', checkOut: payload.time } : v));
+              }
+            } catch (err) {
+              console.error("Sync parse error", err);
+            }
           }
+        });
+
+        return () => {
+          if (client) client.end();
         };
-        window.addEventListener('storage', handleStorageSync);
-        return () => window.removeEventListener('storage', handleStorageSync);
       }, []);
 
+      // Storage quota monitoring
       const [simulatedUsageMB, setSimulatedUsageMB] = useState(0);
       const rawStorageMB = Number(((JSON.stringify(visitors).length * 2) / (1024 * 1024)).toFixed(2));
       const effectiveStorageMB = simulatedUsageMB > 0 ? simulatedUsageMB : Number((rawStorageMB + 2.5).toFixed(2));
@@ -190,7 +237,7 @@
         canvas.height = 300;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, 0, 0, 300, 300);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.65);
         setFormData({ ...formData, photo: dataUrl });
 
         if (video.srcObject) {
@@ -199,23 +246,38 @@
         setCameraActive(false);
       };
 
+      // Persistent Login Action
       const handleLogin = (e) => {
         e.preventDefault();
         setLoginError('');
         const id = loginId.trim().toLowerCase();
         const pass = loginPass.trim();
 
+        let userObj = null;
         if (id === 'superuser' && pass === 'vista@super') {
-          setCurrentUser({ name: "Super User", role: "Super User / Executive Access", level: "super" });
+          userObj = { name: "Super User", role: "Super User / Executive Access", level: "super" };
         } else if (id === 'admin' && pass === 'vista@admin') {
-          setCurrentUser({ name: "System Admin", role: "System Administrator", level: "admin" });
+          userObj = { name: "System Admin", role: "System Administrator", level: "admin" };
         } else if (id === 'frontdesk' && pass === 'vista@gate') {
-          setCurrentUser({ name: "Front Desk Officer", role: "Front Desk & Security Operations", level: "frontdesk" });
+          userObj = { name: "Front Desk Officer", role: "Front Desk & Security Operations", level: "frontdesk" };
+        }
+
+        if (userObj) {
+          setCurrentUser(userObj);
+          localStorage.setItem(SESSION_KEY, JSON.stringify(userObj));
         } else {
           setLoginError('Invalid credentials. Access restricted to authorized personnel.');
         }
       };
 
+      const handleSignOut = () => {
+        setCurrentUser(null);
+        localStorage.removeItem(SESSION_KEY);
+        setLoginId('');
+        setLoginPass('');
+      };
+
+      // Visitor Self-Registration submission
       const handleVisitorSubmit = (e) => {
         if (e) e.preventDefault();
         const hostObj = OFFICIAL_EMPLOYEES.find(emp => emp.id === formData.hostId) || OFFICIAL_EMPLOYEES[2];
@@ -235,6 +297,14 @@
           checkOut: "-"
         };
 
+        // Broadcast to Real-Time Cloud
+        if (mqttClientRef.current && mqttClientRef.current.connected) {
+          mqttClientRef.current.publish(SYNC_TOPIC, JSON.stringify({
+            action: 'NEW_VISITOR',
+            data: newBadge
+          }));
+        }
+
         const updated = [newBadge, ...visitors];
         setVisitors(updated);
         setRegisteredBadge(newBadge);
@@ -243,6 +313,15 @@
 
       const handleCheckOut = (id) => {
         const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        
+        if (mqttClientRef.current && mqttClientRef.current.connected) {
+          mqttClientRef.current.publish(SYNC_TOPIC, JSON.stringify({
+            action: 'CHECKOUT',
+            id: id,
+            time: timeNow
+          }));
+        }
+
         const updated = visitors.map(v => v.id === id ? { ...v, status: 'Checked Out', checkOut: timeNow } : v);
         setVisitors(updated);
       };
@@ -300,7 +379,7 @@
       // Excel Export WITH EMBEDDED IMAGES (ExcelJS Engine)
       const exportToExcelWithImages = async () => {
         if (!window.ExcelJS) {
-          alert("ExcelJS library is still initializing. Please wait a moment.");
+          alert("Excel engine initializing. Please try in a moment.");
           return;
         }
 
@@ -325,7 +404,6 @@
           { header: "Status", key: "status", width: 14 }
         ];
 
-        // Format header row
         const headerRow = worksheet.getRow(1);
         headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
         headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF111C4E" } };
@@ -352,7 +430,6 @@
           row.height = 55;
           row.alignment = { vertical: "middle" };
 
-          // Embed Image
           if (v.photo && v.photo.startsWith("data:image")) {
             try {
               const imageId = workbook.addImage({
@@ -366,7 +443,7 @@
                 editAs: "oneCell"
               });
             } catch (err) {
-              console.error("Failed to embed photo into row", err);
+              console.error("Image embed error", err);
             }
           }
         });
@@ -379,7 +456,7 @@
         link.click();
       };
 
-      // PDF Export WITH EMBEDDED IMAGES (jsPDF + autoTable didDrawCell)
+      // PDF Export WITH EMBEDDED IMAGES
       const exportToPDFWithImages = () => {
         if (!window.jspdf) return;
         const { jsPDF } = window.jspdf;
@@ -504,6 +581,7 @@
 
           <main className="flex-1 flex flex-col">
             
+            {/* VISITOR SELF-REGISTRATION KIOSK */}
             {view === 'visitor' && (
               <div className="flex-1 flex items-center justify-center p-4">
                 <div className="w-full max-w-lg glass-card rounded-2xl p-6 sm:p-8 shadow-2xl border border-slate-800 my-4">
@@ -819,6 +897,7 @@
               </div>
             )}
 
+            {/* STAFF PORTAL WITH PERSISTENT SESSION */}
             {view === 'staff' && (
               <div className="flex-1 flex">
                 {!currentUser ? (
@@ -937,7 +1016,7 @@
                           </button>
                         </div>
                         <button 
-                          onClick={() => { setCurrentUser(null); setLoginId(''); setLoginPass(''); }}
+                          onClick={handleSignOut}
                           className="w-full py-2 bg-rose-600/20 text-rose-400 border border-rose-600/30 rounded-lg text-xs font-bold hover:bg-rose-600/30 transition"
                         >
                           Sign Out
@@ -952,7 +1031,7 @@
                           <div className="flex justify-between items-center flex-wrap gap-3">
                             <div>
                               <h2 className="text-xl font-bold text-white">Campus Footfall & Analytics Overview</h2>
-                              <p className="text-xs text-slate-400">Real-time gate operations and compliance monitoring</p>
+                              <p className="text-xs text-slate-400">Live synchronization active across all devices & security desks</p>
                             </div>
                             <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-bold">
                               ● {activeInsideCount} On Premises
@@ -968,7 +1047,7 @@
                             <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
                               <div className="text-xs text-slate-400 uppercase font-semibold">Today's Visits</div>
                               <div className="text-2xl font-bold text-cyan-400 mt-1">{todayTotalVisits}</div>
-                              <span className="text-[10px] text-slate-400">Live Counter</span>
+                              <span className="text-[10px] text-slate-400">Live Dynamic Count</span>
                             </div>
                             <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
                               <div className="text-xs text-slate-400 uppercase font-semibold">Currently Inside</div>
@@ -1054,7 +1133,7 @@
 
                       {activeTab === 'visitors' && (
                         <div>
-                          <div className="flex justify-between items-center mb-4">
+                          <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
                             <div>
                               <h3 className="text-lg font-bold text-white">Master Visitor Register</h3>
                               <p className="text-xs text-slate-400">Complete audit log with captured visitor snapshots</p>
@@ -1088,7 +1167,7 @@
                               <tbody className="divide-y divide-slate-800 bg-slate-900/40">
                                 {visitors.length === 0 ? (
                                   <tr>
-                                    <td colSpan="10" className="p-6 text-center text-slate-500">No visitor records found. New registrations will automatically appear here.</td>
+                                    <td colSpan="10" className="p-6 text-center text-slate-500">No visitor records found. New mobile registrations automatically appear here in real-time.</td>
                                   </tr>
                                 ) : (
                                   visitors.map(vis => (
