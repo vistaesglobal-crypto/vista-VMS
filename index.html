@@ -104,18 +104,16 @@
       { id: "VES-0107", name: "Keerthivasan D", dept: "Engineering & Projects", role: "Project Manager", access: "Host", status: "Active" }
     ];
 
-    // Clean Production Partition Keys
     const STORAGE_KEY = "VISTA_VMS_DATABASE_PROD_V1";
     const SESSION_KEY = "VISTA_VMS_SESSION_PROD_V1";
     const SYNC_TOPIC = "vista/vms/prod_channel_v1";
-    const TOTAL_QUOTA_MB = 5120; // 5 GB Tier
+    const TOTAL_QUOTA_MB = 5120;
 
     function App() {
       const queryParams = new URLSearchParams(window.location.search);
       const isVisitorParam = queryParams.get('mode') === 'visitor';
       const isStaffParam = queryParams.get('portal') === 'staff';
 
-      // Persistent Authentication (Reload resistant)
       const [currentUser, setCurrentUser] = useState(() => {
         try {
           const saved = localStorage.getItem(SESSION_KEY);
@@ -141,7 +139,6 @@
       const [cameraActive, setCameraActive] = useState(false);
       const [registeredBadge, setRegisteredBadge] = useState(null);
 
-      // Clean Initialized State: Strictly starts from 0 records
       const [visitors, setVisitors] = useState(() => {
         try {
           const saved = localStorage.getItem(STORAGE_KEY);
@@ -161,7 +158,6 @@
         }
       }, [visitors]);
 
-      // Real-Time Cross-Device Communication
       useEffect(() => {
         if (!window.mqtt) return;
 
@@ -176,7 +172,7 @@
 
         client.on('connect', () => {
           client.subscribe(SYNC_TOPIC, (err) => {
-            if (!err) console.log("Real-Time VISTA Gate Sync Activated");
+            if (!err) console.log("Real-Time VISTA Gate Sync Active");
           });
         });
 
@@ -203,7 +199,6 @@
         };
       }, []);
 
-      // Storage calculation starting at real 0 MB
       const [simulatedUsageMB, setSimulatedUsageMB] = useState(0);
       const rawStorageMB = Number(((JSON.stringify(visitors).length * 2) / (1024 * 1024)).toFixed(2));
       const effectiveStorageMB = simulatedUsageMB > 0 ? simulatedUsageMB : rawStorageMB;
@@ -224,7 +219,7 @@
           const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 480, height: 480 } });
           if (videoRef.current) videoRef.current.srcObject = stream;
         } catch (err) {
-          alert("Camera unavailable. You may proceed without photo.");
+          alert("Camera unavailable. Registration can proceed without photo.");
           setCameraActive(false);
         }
       };
@@ -276,7 +271,7 @@
         setLoginPass('');
       };
 
-      // Sequential Numbering: Starts from 1 (VIS-0001, VIS-0002...)
+      // Sequential numbering starting from 1
       const handleVisitorSubmit = (e) => {
         if (e) e.preventDefault();
         const nextSequence = visitors.length + 1;
@@ -328,7 +323,6 @@
         setVisitors(updated);
       };
 
-      // Camera QR Scanner
       useEffect(() => {
         let html5QrCode = null;
         if (activeTab === 'scanner' && scannerActive && window.Html5Qrcode) {
@@ -378,7 +372,6 @@
         }
       }, [standeeModalOpen]);
 
-      // Embedded Photos Excel Export
       const exportToExcelWithImages = async () => {
         if (!window.ExcelJS) {
           alert("Excel engine loading, please try again in a moment.");
@@ -459,7 +452,6 @@
         link.click();
       };
 
-      // Embedded Photos PDF Export
       const exportToPDFWithImages = () => {
         if (!window.jspdf) return;
         const { jsPDF } = window.jspdf;
@@ -529,12 +521,11 @@
         alert("Zero-Loss Archival complete! Excel workbook with photos exported. Storage cleared.");
       };
 
-      // Real calculated metrics starting from 0
+      // Accurate metric variables
       const activeInsideCount = visitors.filter(v => v.status === "Inside").length;
       const todayTotalVisits = visitors.length;
       const totalCampusFootfall = visitors.length;
 
-      // Real Department Breakdown Counts
       const deptCounts = {
         "Indian Operations": visitors.filter(v => v.dept.includes("Indian Operations")).length,
         "Operations": visitors.filter(v => v.dept === "Operations").length,
@@ -542,7 +533,6 @@
         "Frontdesk / Reception": visitors.filter(v => v.dept.includes("Frontdesk")).length,
       };
 
-      // Real Purpose Percentages
       const purposeStats = {
         clients: visitors.length ? Math.round((visitors.filter(v => v.purpose === "Business Meeting").length / visitors.length) * 100) : 0,
         vendors: visitors.length ? Math.round((visitors.filter(v => v.purpose.includes("Vendor")).length / visitors.length) * 100) : 0,
@@ -616,10 +606,12 @@
                       <p className="text-sm text-slate-400 mb-6">Please complete touchless self-registration to receive your instant digital pass.</p>
                       
                       <div className="grid grid-cols-2 gap-4 mb-6">
+                        {/* Dynamic Footfall starting from 0 */}
                         <div className="bg-slate-900/80 p-4 rounded-xl border border-slate-800">
                           <div className="text-xs text-slate-400 uppercase font-semibold">Total Campus Footfall</div>
                           <div className="text-2xl font-bold text-white mt-1">{totalCampusFootfall}</div>
                         </div>
+                        {/* Dynamic Sequence starting from #1 */}
                         <div className="bg-slate-900/80 p-4 rounded-xl border border-slate-800">
                           <div className="text-xs text-slate-400 uppercase font-semibold">Today's Sequence #</div>
                           <div className="text-2xl font-bold text-cyan-400 mt-1">#{todayTotalVisits + 1}</div>
@@ -973,7 +965,6 @@
                 ) : (
                   <div className="flex-1 flex flex-col md:flex-row">
                     
-                    {/* Left Sidebar */}
                     <aside className="w-full md:w-64 glass-sidebar p-5 flex flex-col justify-between shrink-0">
                       <div className="space-y-6">
                         <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800 flex items-center gap-3">
@@ -1046,7 +1037,6 @@
                       </div>
                     </aside>
 
-                    {/* Right Workspace */}
                     <div className="flex-1 p-6 overflow-y-auto">
                       
                       {activeTab === 'dashboard' && (
@@ -1061,7 +1051,6 @@
                             </span>
                           </div>
 
-                          {/* Dynamic Metric Cards (Reset to 0) */}
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
                               <div className="text-xs text-slate-400 uppercase font-semibold">Total Campus Footfall</div>
@@ -1087,7 +1076,6 @@
 
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             
-                            {/* Real Category Distribution */}
                             <div className="bg-slate-900/50 p-5 rounded-xl border border-slate-800">
                               <h4 className="text-sm font-bold text-white mb-4">Footfall by Category</h4>
                               <div className="space-y-3 text-xs">
@@ -1110,7 +1098,6 @@
                               </div>
                             </div>
 
-                            {/* Real Department Distribution */}
                             <div className="bg-slate-900/50 p-5 rounded-xl border border-slate-800">
                               <h4 className="text-sm font-bold text-white mb-4">Visits by Department</h4>
                               <div className="space-y-2 text-xs">
@@ -1133,7 +1120,6 @@
                               </div>
                             </div>
 
-                            {/* Real Arrivals Feed */}
                             <div className="bg-slate-900/50 p-5 rounded-xl border border-slate-800">
                               <h4 className="text-sm font-bold text-white mb-4">Live Arrival Alerts</h4>
                               <div className="space-y-2.5 text-xs max-h-56 overflow-y-auto">
