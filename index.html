@@ -104,17 +104,18 @@
       { id: "VES-0107", name: "Keerthivasan D", dept: "Engineering & Projects", role: "Project Manager", access: "Host", status: "Active" }
     ];
 
-    const STORAGE_KEY = "VISTA_VMS_VISITORS_DATA";
-    const SESSION_KEY = "VISTA_VMS_ACTIVE_SESSION";
-    const SYNC_TOPIC = "vista/vms/global_sync_channel_v1";
-    const TOTAL_QUOTA_MB = 5120; // 5 GB
+    // Clean Production Partition Keys
+    const STORAGE_KEY = "VISTA_VMS_DATABASE_PROD_V1";
+    const SESSION_KEY = "VISTA_VMS_SESSION_PROD_V1";
+    const SYNC_TOPIC = "vista/vms/prod_channel_v1";
+    const TOTAL_QUOTA_MB = 5120; // 5 GB Tier
 
     function App() {
       const queryParams = new URLSearchParams(window.location.search);
       const isVisitorParam = queryParams.get('mode') === 'visitor';
       const isStaffParam = queryParams.get('portal') === 'staff';
 
-      // 1. PERSISTENT AUTHENTICATION STATE (Fixes refresh logout bug)
+      // Persistent Authentication (Reload resistant)
       const [currentUser, setCurrentUser] = useState(() => {
         try {
           const saved = localStorage.getItem(SESSION_KEY);
@@ -140,7 +141,7 @@
       const [cameraActive, setCameraActive] = useState(false);
       const [registeredBadge, setRegisteredBadge] = useState(null);
 
-      // Local master visitor log
+      // Clean Initialized State: Strictly starts from 0 records
       const [visitors, setVisitors] = useState(() => {
         try {
           const saved = localStorage.getItem(STORAGE_KEY);
@@ -152,16 +153,15 @@
 
       const mqttClientRef = useRef(null);
 
-      // Save visitors to localStorage on update
       useEffect(() => {
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(visitors));
         } catch (e) {
-          console.error("Storage save error", e);
+          console.error("Storage error", e);
         }
       }, [visitors]);
 
-      // 2. REAL-TIME CROSS-DEVICE CLOUD SYNC (Fixes mobile scan not reflecting on desktop)
+      // Real-Time Cross-Device Communication
       useEffect(() => {
         if (!window.mqtt) return;
 
@@ -176,7 +176,7 @@
 
         client.on('connect', () => {
           client.subscribe(SYNC_TOPIC, (err) => {
-            if (!err) console.log("Connected to Real-Time VISTA Gate Cloud Sync");
+            if (!err) console.log("Real-Time VISTA Gate Sync Activated");
           });
         });
 
@@ -193,7 +193,7 @@
                 setVisitors(prev => prev.map(v => v.id === payload.id ? { ...v, status: 'Checked Out', checkOut: payload.time } : v));
               }
             } catch (err) {
-              console.error("Sync parse error", err);
+              console.error("Sync error", err);
             }
           }
         });
@@ -203,10 +203,10 @@
         };
       }, []);
 
-      // Storage quota monitoring
+      // Storage calculation starting at real 0 MB
       const [simulatedUsageMB, setSimulatedUsageMB] = useState(0);
       const rawStorageMB = Number(((JSON.stringify(visitors).length * 2) / (1024 * 1024)).toFixed(2));
-      const effectiveStorageMB = simulatedUsageMB > 0 ? simulatedUsageMB : Number((rawStorageMB + 2.5).toFixed(2));
+      const effectiveStorageMB = simulatedUsageMB > 0 ? simulatedUsageMB : rawStorageMB;
       const storagePct = Math.min(100, Math.round((effectiveStorageMB / TOTAL_QUOTA_MB) * 100));
 
       const [scannerActive, setScannerActive] = useState(false);
@@ -224,7 +224,7 @@
           const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 480, height: 480 } });
           if (videoRef.current) videoRef.current.srcObject = stream;
         } catch (err) {
-          alert("Camera access unavailable. Registration can proceed without photo.");
+          alert("Camera unavailable. You may proceed without photo.");
           setCameraActive(false);
         }
       };
@@ -246,7 +246,6 @@
         setCameraActive(false);
       };
 
-      // Persistent Login Action
       const handleLogin = (e) => {
         e.preventDefault();
         setLoginError('');
@@ -266,7 +265,7 @@
           setCurrentUser(userObj);
           localStorage.setItem(SESSION_KEY, JSON.stringify(userObj));
         } else {
-          setLoginError('Invalid credentials. Access restricted to authorized personnel.');
+          setLoginError('Invalid credentials. Access is restricted.');
         }
       };
 
@@ -277,12 +276,16 @@
         setLoginPass('');
       };
 
-      // Visitor Self-Registration submission
+      // Sequential Numbering: Starts from 1 (VIS-0001, VIS-0002...)
       const handleVisitorSubmit = (e) => {
         if (e) e.preventDefault();
+        const nextSequence = visitors.length + 1;
+        const formattedId = `VIS-${String(nextSequence).padStart(4, '0')}`;
         const hostObj = OFFICIAL_EMPLOYEES.find(emp => emp.id === formData.hostId) || OFFICIAL_EMPLOYEES[2];
+
         const newBadge = {
-          id: `VIS-${Math.floor(1000 + Math.random() * 9000)}`,
+          id: formattedId,
+          sequence: nextSequence,
           name: formData.fullName,
           phone: formData.phone,
           company: formData.company || "Independent Guest",
@@ -297,7 +300,6 @@
           checkOut: "-"
         };
 
-        // Broadcast to Real-Time Cloud
         if (mqttClientRef.current && mqttClientRef.current.connected) {
           mqttClientRef.current.publish(SYNC_TOPIC, JSON.stringify({
             action: 'NEW_VISITOR',
@@ -376,10 +378,10 @@
         }
       }, [standeeModalOpen]);
 
-      // Excel Export WITH EMBEDDED IMAGES (ExcelJS Engine)
+      // Embedded Photos Excel Export
       const exportToExcelWithImages = async () => {
         if (!window.ExcelJS) {
-          alert("Excel engine initializing. Please try in a moment.");
+          alert("Excel engine loading, please try again in a moment.");
           return;
         }
 
@@ -412,7 +414,7 @@
 
         visitors.forEach((v, index) => {
           const rowNumber = index + 2;
-          const row = worksheet.addRow({
+          worksheet.addRow({
             photo: "",
             id: v.id,
             name: v.name,
@@ -427,6 +429,7 @@
             status: v.status
           });
 
+          const row = worksheet.getRow(rowNumber);
           row.height = 55;
           row.alignment = { vertical: "middle" };
 
@@ -443,7 +446,7 @@
                 editAs: "oneCell"
               });
             } catch (err) {
-              console.error("Image embed error", err);
+              console.error("Image export error", err);
             }
           }
         });
@@ -456,7 +459,7 @@
         link.click();
       };
 
-      // PDF Export WITH EMBEDDED IMAGES
+      // Embedded Photos PDF Export
       const exportToPDFWithImages = () => {
         if (!window.jspdf) return;
         const { jsPDF } = window.jspdf;
@@ -523,11 +526,29 @@
         const purged = visitors.map(v => ({ ...v, photo: "" }));
         setVisitors(purged);
         setSimulatedUsageMB(0);
-        alert("Zero-Loss Archival complete! Excel workbook with embedded photos downloaded. Storage freed.");
+        alert("Zero-Loss Archival complete! Excel workbook with photos exported. Storage cleared.");
       };
 
+      // Real calculated metrics starting from 0
       const activeInsideCount = visitors.filter(v => v.status === "Inside").length;
       const todayTotalVisits = visitors.length;
+      const totalCampusFootfall = visitors.length;
+
+      // Real Department Breakdown Counts
+      const deptCounts = {
+        "Indian Operations": visitors.filter(v => v.dept.includes("Indian Operations")).length,
+        "Operations": visitors.filter(v => v.dept === "Operations").length,
+        "Engineering & Projects": visitors.filter(v => v.dept.includes("Engineering")).length,
+        "Frontdesk / Reception": visitors.filter(v => v.dept.includes("Frontdesk")).length,
+      };
+
+      // Real Purpose Percentages
+      const purposeStats = {
+        clients: visitors.length ? Math.round((visitors.filter(v => v.purpose === "Business Meeting").length / visitors.length) * 100) : 0,
+        vendors: visitors.length ? Math.round((visitors.filter(v => v.purpose.includes("Vendor")).length / visitors.length) * 100) : 0,
+        it: visitors.length ? Math.round((visitors.filter(v => v.purpose.includes("Maintenance")).length / visitors.length) * 100) : 0,
+        interviews: visitors.length ? Math.round((visitors.filter(v => v.purpose.includes("Interview")).length / visitors.length) * 100) : 0
+      };
 
       return (
         <div className="min-h-screen flex flex-col">
@@ -581,7 +602,7 @@
 
           <main className="flex-1 flex flex-col">
             
-            {/* VISITOR SELF-REGISTRATION KIOSK */}
+            {/* 1. VISITOR REGISTRATION VIEW */}
             {view === 'visitor' && (
               <div className="flex-1 flex items-center justify-center p-4">
                 <div className="w-full max-w-lg glass-card rounded-2xl p-6 sm:p-8 shadow-2xl border border-slate-800 my-4">
@@ -597,7 +618,7 @@
                       <div className="grid grid-cols-2 gap-4 mb-6">
                         <div className="bg-slate-900/80 p-4 rounded-xl border border-slate-800">
                           <div className="text-xs text-slate-400 uppercase font-semibold">Total Campus Footfall</div>
-                          <div className="text-2xl font-bold text-white mt-1">12,845</div>
+                          <div className="text-2xl font-bold text-white mt-1">{totalCampusFootfall}</div>
                         </div>
                         <div className="bg-slate-900/80 p-4 rounded-xl border border-slate-800">
                           <div className="text-xs text-slate-400 uppercase font-semibold">Today's Sequence #</div>
@@ -897,7 +918,7 @@
               </div>
             )}
 
-            {/* STAFF PORTAL WITH PERSISTENT SESSION */}
+            {/* 2. STAFF PORTAL */}
             {view === 'staff' && (
               <div className="flex-1 flex">
                 {!currentUser ? (
@@ -952,6 +973,7 @@
                 ) : (
                   <div className="flex-1 flex flex-col md:flex-row">
                     
+                    {/* Left Sidebar */}
                     <aside className="w-full md:w-64 glass-sidebar p-5 flex flex-col justify-between shrink-0">
                       <div className="space-y-6">
                         <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800 flex items-center gap-3">
@@ -1024,6 +1046,7 @@
                       </div>
                     </aside>
 
+                    {/* Right Workspace */}
                     <div className="flex-1 p-6 overflow-y-auto">
                       
                       {activeTab === 'dashboard' && (
@@ -1031,23 +1054,24 @@
                           <div className="flex justify-between items-center flex-wrap gap-3">
                             <div>
                               <h2 className="text-xl font-bold text-white">Campus Footfall & Analytics Overview</h2>
-                              <p className="text-xs text-slate-400">Live synchronization active across all devices & security desks</p>
+                              <p className="text-xs text-slate-400">Live operational sync active across all desks</p>
                             </div>
                             <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-bold">
                               ● {activeInsideCount} On Premises
                             </span>
                           </div>
 
+                          {/* Dynamic Metric Cards (Reset to 0) */}
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
                               <div className="text-xs text-slate-400 uppercase font-semibold">Total Campus Footfall</div>
-                              <div className="text-2xl font-bold text-white mt-1">12,845</div>
-                              <span className="text-[10px] text-emerald-400 font-bold">+18% Monthly</span>
+                              <div className="text-2xl font-bold text-white mt-1">{totalCampusFootfall}</div>
+                              <span className="text-[10px] text-emerald-400 font-bold">Initial Launch</span>
                             </div>
                             <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
                               <div className="text-xs text-slate-400 uppercase font-semibold">Today's Visits</div>
                               <div className="text-2xl font-bold text-cyan-400 mt-1">{todayTotalVisits}</div>
-                              <span className="text-[10px] text-slate-400">Live Dynamic Count</span>
+                              <span className="text-[10px] text-slate-400">Live Counter</span>
                             </div>
                             <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
                               <div className="text-xs text-slate-400 uppercase font-semibold">Currently Inside</div>
@@ -1063,50 +1087,53 @@
 
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             
+                            {/* Real Category Distribution */}
                             <div className="bg-slate-900/50 p-5 rounded-xl border border-slate-800">
                               <h4 className="text-sm font-bold text-white mb-4">Footfall by Category</h4>
                               <div className="space-y-3 text-xs">
                                 <div>
-                                  <div className="flex justify-between mb-1"><span className="text-slate-300">Clients & Corporate</span><span className="font-bold text-cyan-400">40%</span></div>
-                                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden"><div className="bg-cyan-500 h-full w-[40%]"></div></div>
+                                  <div className="flex justify-between mb-1"><span className="text-slate-300">Clients & Corporate</span><span className="font-bold text-cyan-400">{purposeStats.clients}%</span></div>
+                                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden"><div className="bg-cyan-500 h-full" style={{ width: `${purposeStats.clients}%` }}></div></div>
                                 </div>
                                 <div>
-                                  <div className="flex justify-between mb-1"><span className="text-slate-300">Vendors / Suppliers</span><span className="font-bold text-blue-400">30%</span></div>
-                                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden"><div className="bg-blue-500 h-full w-[30%]"></div></div>
+                                  <div className="flex justify-between mb-1"><span className="text-slate-300">Vendors / Suppliers</span><span className="font-bold text-blue-400">{purposeStats.vendors}%</span></div>
+                                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden"><div className="bg-blue-500 h-full" style={{ width: `${purposeStats.vendors}%` }}></div></div>
                                 </div>
                                 <div>
-                                  <div className="flex justify-between mb-1"><span className="text-slate-300">Contractors & IT</span><span className="font-bold text-purple-400">20%</span></div>
-                                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden"><div className="bg-purple-500 h-full w-[20%]"></div></div>
+                                  <div className="flex justify-between mb-1"><span className="text-slate-300">Contractors & IT</span><span className="font-bold text-purple-400">{purposeStats.it}%</span></div>
+                                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden"><div className="bg-purple-500 h-full" style={{ width: `${purposeStats.it}%` }}></div></div>
                                 </div>
                                 <div>
-                                  <div className="flex justify-between mb-1"><span className="text-slate-300">Interview Candidates</span><span className="font-bold text-emerald-400">10%</span></div>
-                                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden"><div className="bg-emerald-500 h-full w-[10%]"></div></div>
+                                  <div className="flex justify-between mb-1"><span className="text-slate-300">Interview Candidates</span><span className="font-bold text-emerald-400">{purposeStats.interviews}%</span></div>
+                                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden"><div className="bg-emerald-500 h-full" style={{ width: `${purposeStats.interviews}%` }}></div></div>
                                 </div>
                               </div>
                             </div>
 
+                            {/* Real Department Distribution */}
                             <div className="bg-slate-900/50 p-5 rounded-xl border border-slate-800">
                               <h4 className="text-sm font-bold text-white mb-4">Visits by Department</h4>
                               <div className="space-y-2 text-xs">
                                 <div className="flex justify-between p-2.5 bg-slate-800/40 rounded-lg">
                                   <span className="text-slate-300">Indian Operations (Magesh Kumar S)</span>
-                                  <span className="font-bold text-white">42 visits</span>
+                                  <span className="font-bold text-white">{deptCounts["Indian Operations"]} visits</span>
                                 </div>
                                 <div className="flex justify-between p-2.5 bg-slate-800/40 rounded-lg">
                                   <span className="text-slate-300">Operations & Plant (Mohan D)</span>
-                                  <span className="font-bold text-white">38 visits</span>
+                                  <span className="font-bold text-white">{deptCounts["Operations"]} visits</span>
                                 </div>
                                 <div className="flex justify-between p-2.5 bg-slate-800/40 rounded-lg">
                                   <span className="text-slate-300">Engineering & Projects (Naveen / Keerthi)</span>
-                                  <span className="font-bold text-white">26 visits</span>
+                                  <span className="font-bold text-white">{deptCounts["Engineering & Projects"]} visits</span>
                                 </div>
                                 <div className="flex justify-between p-2.5 bg-slate-800/40 rounded-lg">
                                   <span className="text-slate-300">Frontdesk / Reception (Hariprasath)</span>
-                                  <span className="font-bold text-white">20 visits</span>
+                                  <span className="font-bold text-white">{deptCounts["Frontdesk / Reception"]} visits</span>
                                 </div>
                               </div>
                             </div>
 
+                            {/* Real Arrivals Feed */}
                             <div className="bg-slate-900/50 p-5 rounded-xl border border-slate-800">
                               <h4 className="text-sm font-bold text-white mb-4">Live Arrival Alerts</h4>
                               <div className="space-y-2.5 text-xs max-h-56 overflow-y-auto">
