@@ -1,296 +1,940 @@
-<!-- ... existing code ... -->
-  <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
-
-    const FREE_STORAGE_LIMIT_MB = 1024; // 1 GB bucket quota
-    const GITHUB_LIVE_BASE_URL = "https://vistaesglobal-crypto.github.io/vista-VMS/";
-    const VISITOR_DEDICATED_URL = "https://vistaesglobal-crypto.github.io/vista-VMS/?mode=visitor";
-
-    function VistaLogo({ className = "h-9", containerClass = "" }) {
-<!-- ... existing code ... -->
-    function App() {
-      // 1. STRICT ROUTING & VISITOR DECOUPLING:
-      // Checks query parameter '?mode=visitor' or hash
-      const [viewMode, setViewMode] = useState(() => {
-        const search = window.location.search.toLowerCase();
-        const hash = window.location.hash.toLowerCase();
-        if (search.includes('portal') || hash.includes('portal') || hash.includes('login') || hash.includes('admin')) {
-          return 'internal';
-        }
-        return 'public';
-      });
-
-      // Strict Visitor Isolation mode: completely hides the staff header & navigation
-      const [isVisitorIsolated, setIsVisitorIsolated] = useState(() => {
-        const search = window.location.search.toLowerCase();
-        const hash = window.location.hash.toLowerCase();
-        return search.includes('mode=visitor') || hash.includes('visitor') || (!search.includes('portal') && !hash.includes('portal'));
-      });
-
-      // 2. HARD AUTHENTICATION WALL: Strictly null on load
-      const [currentUser, setCurrentUser] = useState(null);
-      const [loginUsername, setLoginUsername] = useState('');
-      const [loginPassword, setLoginPassword] = useState('');
-      const [showPassword, setShowPassword] = useState(false);
-      const [loginError, setLoginError] = useState('');
-<!-- ... existing code ... -->
-      // Listen to browser URL changes for robust routing
-      useEffect(() => {
-        const handleRouting = () => {
-          const search = window.location.search.toLowerCase();
-          const hash = window.location.hash.toLowerCase();
-          if (search.includes('portal') || hash.includes('portal') || hash.includes('login') || hash.includes('admin')) {
-            setViewMode('internal');
-            setIsVisitorIsolated(false);
-          } else {
-            setViewMode('public');
-            setIsVisitorIsolated(true);
-            setRegStep(1);
-          }
-        };
-        window.addEventListener('popstate', handleRouting);
-        window.addEventListener('hashchange', handleRouting);
-        return () => {
-          window.removeEventListener('popstate', handleRouting);
-          window.removeEventListener('hashchange', handleRouting);
-        };
-      }, []);
-<!-- ... existing code ... -->
-      // QR Code Generator for Standee (Strictly targets the dedicated Visitor URL)
-      useEffect(() => {
-        if (showStandeeModal) {
-          const timer = setTimeout(() => {
-            const container = document.getElementById('standee-qr-target');
-            if (container && window.QRCode) {
-              container.innerHTML = '';
-              new QRCode(container, {
-                text: VISITOR_DEDICATED_URL,
-                width: 200,
-                height: 200,
-                colorDark: '#0284c7',
-                colorLight: '#ffffff',
-                correctLevel: QRCode.CorrectLevel.H
-              });
-            }
-          }, 120);
-          return () => clearTimeout(timer);
-        }
-      }, [showStandeeModal]);
-<!-- ... existing code ... -->
-      // Strict Authentication Logic (Manual input only)
-      const handleLogin = (e) => {
-        if (e) e.preventDefault();
-        setLoginError('');
-        const trimmedUser = loginUsername.trim().toLowerCase();
-        const account = SYSTEM_ACCOUNTS[trimmedUser];
-
-        if (account && account.password === loginPassword) {
-          setCurrentUser(account);
-          setLoginUsername('');
-          setLoginPassword('');
-          showToast('AUTHENTICATED', `Welcome back, ${account.displayName}! Access granted as ${account.role}.`);
-        } else {
-          setLoginError('Invalid credentials. Check username & password and retry.');
-        }
-      };
-
-      const handleLogout = () => {
-        setCurrentUser(null);
-        setLoginUsername('');
-        setLoginPassword('');
-        setLoginError('');
-        showToast('SESSION TERMINATED', 'You have been signed out. Dashboard locked.');
-      };
-<!-- ... existing code ... -->
-      return (
-        <div className="min-h-screen flex flex-col bg-slate-900 text-slate-100">
-          
-          {/* Notification Toast */}
-          {toast && (
-            <div className="fixed top-4 right-4 z-50 bg-slate-800 border-l-4 border-sky-500 text-white p-4 rounded-xl shadow-2xl max-w-sm">
-              <div className="flex items-start gap-3">
-                <div className="p-2 bg-sky-600 rounded-lg">
-                  <i data-lucide="bell" className="w-4 h-4 text-white"></i>
                 </div>
-                <div className="flex-1">
-                  <span className="text-[10px] font-bold text-sky-400 uppercase tracking-wider block">{toast.title}</span>
-                  <p className="text-xs font-semibold text-slate-200 mt-0.5">{toast.text}</p>
-                  <span className="text-[10px] text-slate-400 mt-1 block">{toast.time}</span>
-                </div>
-              </div>
-            </div>
-          )}
 
-          {/* Top Bar Navigation: COMPLETELY HIDDEN in Visitor Mode */}
-          {!isVisitorIsolated && (
-            <header className="bg-slate-950 border-b border-slate-800 px-4 py-2 flex flex-wrap items-center justify-between text-xs sticky top-0 z-40">
-              <div className="flex items-center gap-3">
-                <VistaLogo className="h-8" containerClass="border border-slate-700/60 shadow-sm" />
-                <div className="border-l border-slate-800 pl-3">
-                  <span className="font-bold text-white text-sm tracking-tight block">VISTA Engg Solutions Private Limited</span>
-                  <span className="text-[10px] text-slate-400">Visitor Management System</span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 mt-2 sm:mt-0">
-                {/* Entrance Gate Standee QR */}
-                <button
-                  onClick={() => setShowStandeeModal(true)}
-                  className="bg-sky-700 hover:bg-sky-600 text-white px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1.5 shadow transition text-xs"
-                  title="View Entrance Gate QR Poster for Visitors"
-                >
-                  <i data-lucide="qr-code" className="w-3.5 h-3.5"></i>
-                  <span>Entrance Standee QR</span>
-                </button>
-
-                {/* View Switcher */}
-                <div className="bg-slate-900 p-0.5 rounded-lg border border-slate-800 flex items-center">
+                <div className="flex gap-3 pt-3">
                   <button
-                    onClick={() => { 
-                      setIsVisitorIsolated(true);
-                      setViewMode('public'); 
-                      setRegStep(1); 
-                    }}
-                    className={`px-3 py-1 rounded-md font-medium transition flex items-center gap-1.5 ${viewMode === 'public' ? 'bg-sky-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
+                    onClick={() => setRegStep(2)}
+                    className="w-1/3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-2.5 rounded-xl transition"
                   >
-                    <i data-lucide="smartphone" className="w-3.5 h-3.5"></i>
-                    <span>Visitor Registration</span>
+                    Back
                   </button>
                   <button
-                    onClick={() => {
-                      setViewMode('internal');
-                    }}
-                    className={`px-3 py-1 rounded-md font-medium transition flex items-center gap-1.5 ${viewMode === 'internal' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
+                    disabled={!regData.purpose}
+                    onClick={() => setRegStep(4)}
+                    className="w-2/3 bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white font-bold py-2.5 rounded-xl transition"
                   >
-                    <i data-lucide="shield-check" className="w-3.5 h-3.5"></i>
-                    <span>Staff Portal</span>
+                    Next: Transit & Photo →
                   </button>
                 </div>
-
-                {/* Authenticated User Status & Logout */}
-                {viewMode === 'internal' && currentUser && (
-                  <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
-                    <div className="flex items-center gap-1.5 bg-slate-900 py-1 px-2.5 rounded-lg border border-slate-800">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                      <span className="font-bold text-white text-[11px]">{currentUser.displayName}</span>
-                    </div>
-                    <button
-                      onClick={handleLogout}
-                      title="Sign Out of Portal"
-                      className="p-1.5 bg-slate-800 hover:bg-rose-900/60 hover:text-rose-300 text-slate-300 rounded-lg border border-slate-700 transition"
-                    >
-                      <i data-lucide="log-out" className="w-3.5 h-3.5"></i>
-                    </button>
-                  </div>
-                )}
               </div>
-            </header>
-          )}
-<!-- ... existing code ... -->
-          {/* HARD LOGIN WALL: Clean manual-only login form */}
-          {viewMode === 'internal' && !currentUser && (
-            <div className="flex-1 flex items-center justify-center p-6 bg-gradient-to-tr from-slate-950 via-slate-900 to-slate-950">
-              <div className="w-full max-w-md bg-slate-950 border border-slate-800 rounded-3xl p-8 shadow-2xl space-y-6">
-                <div className="text-center space-y-3">
-                  <div className="flex justify-center">
-                    <VistaLogo className="h-14" containerClass="border border-slate-200/50 shadow-xl" />
-                  </div>
-                  <h2 className="text-xl font-bold text-white tracking-tight">Security & Staff Portal</h2>
-                  <p className="text-xs text-slate-400">Strictly Authorized Personnel Only</p>
+            )}
+
+            {/* STEP 4: ASSETS, VEHICLE & PHOTO BADGE CAPTURE */}
+            {regStep === 4 && (
+              <div className="space-y-4 text-xs">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                  <span className="font-bold text-slate-300">Step 3 of 4: Carried Items & Photo</span>
+                  <span className="text-[10px] bg-sky-950 text-sky-400 px-2 py-0.5 rounded-full font-mono">Step 3/4</span>
                 </div>
 
-                {loginError && (
-                  <div className="bg-rose-950/80 border border-rose-800 text-rose-300 px-4 py-2.5 rounded-xl text-xs flex items-center gap-2">
-                    <i data-lucide="alert-circle" className="w-4 h-4 shrink-0"></i>
-                    <span>{loginError}</span>
-                  </div>
-                )}
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Declared Assets / Devices</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., Dell Laptop Serial #7821, Tool Box"
+                    value={regData.assets}
+                    onChange={(e) => setRegData({ ...regData, assets: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-sky-500"
+                  />
+                </div>
 
-                <form onSubmit={handleLogin} className="space-y-4 text-xs">
-                  <div>
-                    <label className="block text-slate-300 font-semibold mb-1">Username / User ID</label>
-                    <input
-                      type="text"
-                      required
-                      autoComplete="username"
-                      placeholder="Enter authorized username"
-                      value={loginUsername}
-                      onChange={(e) => setLoginUsername(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-sky-500 font-mono"
-                    />
-                  </div>
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Vehicle Registration #</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., TN-38-BZ-4412 (or 'Cab / Walk-in')"
+                    value={regData.vehicle}
+                    onChange={(e) => setRegData({ ...regData, vehicle: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-sky-500 font-mono"
+                  />
+                </div>
 
-                  <div>
-                    <label className="block text-slate-300 font-semibold mb-1">Password</label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? "text" : "password"}
-                        required
-                        autoComplete="current-password"
-                        placeholder="••••••••••••"
-                        value={loginPassword}
-                        onChange={(e) => setLoginPassword(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-3.5 pr-10 py-2.5 text-white focus:outline-none focus:border-sky-500 font-mono"
+                {/* Camera / Photo Capture Module */}
+                <div className="bg-slate-950 border border-slate-800 p-3 rounded-2xl space-y-2 text-center">
+                  <label className="block text-slate-300 font-semibold text-left">Live Identity Photo *</label>
+
+                  {regData.photo ? (
+                    <div className="space-y-2">
+                      <img
+                        src={regData.photo}
+                        alt="Captured visitor"
+                        className="w-28 h-28 mx-auto rounded-xl object-cover border-2 border-emerald-500 shadow-md"
                       />
                       <button
                         type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-3 text-slate-400 hover:text-slate-200"
-                        tabIndex="-1"
+                        onClick={() => setRegData({ ...regData, photo: null })}
+                        className="text-[11px] text-rose-400 hover:underline block mx-auto"
                       >
-                        <i data-lucide={showPassword ? "eye-off" : "eye"} className="w-4 h-4"></i>
+                        Retake Photo
+                      </button>
+                    </div>
+                  ) : cameraActive ? (
+                    <div className="space-y-2">
+                      <video ref={videoRef} autoPlay playsInline className="w-full h-44 bg-black rounded-xl object-cover border border-slate-700"></video>
+                      <canvas ref={canvasRef} className="hidden"></canvas>
+                      <button
+                        type="button"
+                        onClick={capturePhoto}
+                        className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-xl transition flex items-center justify-center gap-1.5"
+                      >
+                        <i data-lucide="camera" className="w-4 h-4"></i>
+                        <span>Snap Photo (Auto Compressed)</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="p-4 border-2 border-dashed border-slate-800 rounded-xl">
+                      <i data-lucide="user" className="w-8 h-8 text-slate-500 mx-auto mb-1"></i>
+                      <p className="text-[11px] text-slate-400 mb-2">Capture headshot for instant verification badge</p>
+                      <button
+                        type="button"
+                        onClick={startCamera}
+                        className="bg-sky-600 hover:bg-sky-500 text-white font-bold px-4 py-2 rounded-xl text-xs transition inline-flex items-center gap-1.5"
+                      >
+                        <i data-lucide="camera" className="w-3.5 h-3.5"></i>
+                        <span>Open Camera</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-3 pt-3">
+                  <button
+                    onClick={() => setRegStep(3)}
+                    className="w-1/3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-2.5 rounded-xl transition"
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={handleRegistrationSubmit}
+                    className="w-2/3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/20"
+                  >
+                    <i data-lucide="shield-check" className="w-4 h-4"></i>
+                    <span>Generate Entry Pass</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 5: REGISTRATION COMPLETE & DIGITAL BADGE */}
+            {regStep === 5 && activePassModal && (
+              <div className="space-y-5 text-center">
+                <div className="w-12 h-12 bg-emerald-950 text-emerald-400 rounded-full flex items-center justify-center mx-auto border border-emerald-800">
+                  <i data-lucide="check" className="w-6 h-6"></i>
+                </div>
+
+                <div>
+                  <h2 className="text-base font-bold text-white">Entry Pass Confirmed!</h2>
+                  <p className="text-xs text-slate-400 mt-0.5">Show this pass to security at the gate</p>
+                </div>
+
+                {/* Digital Badge Card */}
+                <div className="bg-white text-slate-900 rounded-2xl p-4 shadow-xl border border-slate-300 text-left space-y-3">
+                  <div className="flex items-center justify-between border-b pb-2 border-slate-200">
+                    <VistaLogo className="h-7" />
+                    <span className="bg-sky-100 text-sky-900 font-black text-[10px] px-2 py-0.5 rounded-full font-mono">
+                      {activePassModal.id}
+                    </span>
+                  </div>
+
+                  <div className="flex gap-3 items-center">
+                    {activePassModal.photo ? (
+                      <img src={activePassModal.photo} alt="Visitor" className="w-16 h-16 rounded-xl object-cover border border-slate-300" />
+                    ) : (
+                      <div className="w-16 h-16 bg-slate-200 rounded-xl flex items-center justify-center text-slate-500">
+                        <i data-lucide="user" className="w-8 h-8"></i>
+                      </div>
+                    )}
+                    <div>
+                      <h3 className="font-black text-sm text-slate-900 leading-tight">{activePassModal.name}</h3>
+                      <span className="text-[11px] text-slate-600 block">{activePassModal.company}</span>
+                      <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded inline-block mt-0.5">
+                        {activePassModal.category}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-50 p-2 rounded-xl text-[11px] space-y-1 border border-slate-200">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Host Personnel:</span>
+                      <span className="font-bold text-slate-800">{activePassModal.host}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Department:</span>
+                      <span className="font-semibold text-slate-700">{activePassModal.hostDept}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Check-In Time:</span>
+                      <span className="font-mono font-bold text-slate-900">{activePassModal.checkIn}</span>
+                    </div>
+                  </div>
+
+                  <div className="pt-1 flex flex-col items-center justify-center">
+                    <div id="pass-qr-target" className="p-2 bg-white rounded-lg border border-slate-200 shadow-inner"></div>
+                    <span className="text-[9px] text-slate-500 font-mono mt-1">Scan at Security Turnstile</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setRegStep(1);
+                    setRegData({
+                      name: '', phone: '', idType: 'Aadhaar (Last 4)', idLast4: '',
+                      company: '', category: 'Clients & Corporate Partners',
+                      purpose: 'Technical Discussion', host: 'Magesh Kumar S',
+                      hostDept: 'Indian Operations', assets: '', vehicle: '', photo: null
+                    });
+                  }}
+                  className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2.5 rounded-xl text-xs transition"
+                >
+                  Done / Register Another Visitor
+                </button>
+              </div>
+            )}
+
+          </div>
+        </div>
+      )}
+
+      {/* VIEW MODE 2: HARD LOGIN WALL FOR SECURITY & STAFF PORTAL */}
+      {viewMode === 'internal' && !currentUser && (
+        <div className="flex-1 flex items-center justify-center p-6 bg-gradient-to-tr from-slate-950 via-slate-900 to-slate-950">
+          <div className="w-full max-w-md bg-slate-950 border border-slate-800 rounded-3xl p-8 shadow-2xl space-y-6">
+            
+            <div className="text-center space-y-3">
+              <div className="flex justify-center">
+                <VistaLogo className="h-14" containerClass="border border-slate-200/50 shadow-xl" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-white tracking-tight">Security & Staff Portal</h2>
+                <p className="text-xs text-slate-400">Strictly Authorized Personnel Only</p>
+              </div>
+            </div>
+
+            {loginError && (
+              <div className="bg-rose-950/80 border border-rose-800 text-rose-300 px-4 py-2.5 rounded-xl text-xs flex items-center gap-2">
+                <i data-lucide="alert-circle" className="w-4 h-4 shrink-0"></i>
+                <span>{loginError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleLogin} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Username / User ID</label>
+                <input
+                  type="text"
+                  required
+                  autoComplete="username"
+                  placeholder="Enter authorized username"
+                  value={loginUsername}
+                  onChange={(e) => setLoginUsername(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-sky-500 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Password</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    autoComplete="current-password"
+                    placeholder="••••••••••••"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-3.5 pr-10 py-2.5 text-white focus:outline-none focus:border-sky-500 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-3 text-slate-400 hover:text-slate-200"
+                    tabIndex="-1"
+                  >
+                    <i data-lucide={showPassword ? "eye-off" : "eye"} className="w-4 h-4"></i>
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white font-bold py-3 rounded-xl text-xs shadow-lg shadow-sky-600/20 transition flex items-center justify-center gap-2"
+              >
+                <i data-lucide="lock" className="w-4 h-4"></i>
+                <span>Authenticate & Access Dashboard</span>
+              </button>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsVisitorIsolated(true);
+                    setViewMode('public');
+                    setRegStep(1);
+                  }}
+                  className="text-xs text-slate-400 hover:text-sky-400 transition"
+                >
+                  ← Return to Visitor Registration
+                </button>
+              </div>
+            </form>
+
+          </div>
+        </div>
+      )}
+
+      {/* VIEW MODE 3: AUTHENTICATED STAFF DASHBOARD */}
+      {viewMode === 'internal' && currentUser && (
+        <div className="flex-1 flex flex-col md:flex-row">
+          
+          {/* Sidebar */}
+          <aside className="w-full md:w-64 bg-slate-950 border-r border-slate-800 p-4 flex flex-col justify-between shrink-0">
+            <div className="space-y-6">
+              {/* User Profile Card */}
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-sky-600 text-white font-black flex items-center justify-center text-sm shadow">
+                    {currentUser.displayName.slice(0, 1)}
+                  </div>
+                  <div className="overflow-hidden">
+                    <span className="font-bold text-white text-xs block truncate">{currentUser.displayName}</span>
+                    <span className="text-[10px] text-sky-400 block truncate">{currentUser.role}</span>
+                  </div>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  title="Sign Out"
+                  className="text-slate-400 hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-800 transition"
+                >
+                  <i data-lucide="log-out" className="w-4 h-4"></i>
+                </button>
+              </div>
+
+              {/* Navigation Links */}
+              <nav className="space-y-1 text-xs">
+                <button
+                  onClick={() => setActiveTab('dashboard')}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium transition ${
+                    activeTab === 'dashboard' ? 'bg-sky-600 text-white font-bold shadow-md shadow-sky-600/20' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                  }`}
+                >
+                  <i data-lucide="layout-dashboard" className="w-4 h-4"></i>
+                  <span>Dashboard & KPIs</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('all')}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-medium transition ${
+                    activeTab === 'all' ? 'bg-sky-600 text-white font-bold shadow-md shadow-sky-600/20' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <i data-lucide="users" className="w-4 h-4"></i>
+                    <span>All Visitors</span>
+                  </div>
+                  <span className="text-[10px] font-mono bg-slate-800 px-2 py-0.5 rounded-full">{visitors.length}</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('inside')}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-medium transition ${
+                    activeTab === 'inside' ? 'bg-sky-600 text-white font-bold shadow-md shadow-sky-600/20' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <i data-lucide="shield-check" className="w-4 h-4"></i>
+                    <span>Currently Inside</span>
+                  </div>
+                  <span className="text-[10px] font-mono bg-emerald-950 text-emerald-400 font-bold px-2 py-0.5 rounded-full">
+                    {currentlyInsideCount}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('scanner')}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium transition ${
+                    activeTab === 'scanner' ? 'bg-sky-600 text-white font-bold shadow-md shadow-sky-600/20' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                  }`}
+                >
+                  <i data-lucide="qr-code" className="w-4 h-4"></i>
+                  <span>Gate QR Scanner</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('employees')}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium transition ${
+                    activeTab === 'employees' ? 'bg-sky-600 text-white font-bold shadow-md shadow-sky-600/20' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                  }`}
+                >
+                  <i data-lucide="contact" className="w-4 h-4"></i>
+                  <span>Host Personnel Master</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('reports')}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium transition ${
+                    activeTab === 'reports' ? 'bg-sky-600 text-white font-bold shadow-md shadow-sky-600/20' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                  }`}
+                >
+                  <i data-lucide="file-spreadsheet" className="w-4 h-4"></i>
+                  <span>Export Excel & PDF</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('storage')}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-medium transition ${
+                    activeTab === 'storage' ? 'bg-sky-600 text-white font-bold shadow-md shadow-sky-600/20' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <i data-lucide="hard-drive" className="w-4 h-4"></i>
+                    <span>Storage & Outages</span>
+                  </div>
+                  {isStorageCritical && <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>}
+                </button>
+              </nav>
+            </div>
+
+            <div className="pt-4 border-t border-slate-900 text-[11px] text-slate-500">
+              <span>Campus Security Protocol v3.8</span>
+            </div>
+          </aside>
+
+          {/* Main Content Area */}
+          <main className="flex-1 p-4 md:p-6 overflow-y-auto max-h-[calc(100vh-50px)] custom-scrollbar">
+            
+            {/* TAB 1: DASHBOARD & KPIS */}
+            {activeTab === 'dashboard' && (
+              <div className="space-y-6">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h1 className="text-xl font-black text-white">Campus Footfall & Analytics</h1>
+                    <p className="text-xs text-slate-400">Live operational overview for security and reception control</p>
+                  </div>
+                  <span className="bg-emerald-950/80 border border-emerald-800 text-emerald-300 text-xs px-3 py-1 rounded-full font-bold flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span>Campus Gate Active</span>
+                  </span>
+                </div>
+
+                {/* KPI Cards */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
+                    <span className="text-[11px] text-slate-400 font-semibold uppercase">Total Campus Visitors</span>
+                    <div className="text-2xl font-black text-white font-mono mt-1">12,845</div>
+                    <span className="text-[10px] text-emerald-400 mt-1 block">↑ +18% Monthly footfall</span>
+                  </div>
+
+                  <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
+                    <span className="text-[11px] text-slate-400 font-semibold uppercase">Today's Visits</span>
+                    <div className="text-2xl font-black text-sky-400 font-mono mt-1">28</div>
+                    <span className="text-[10px] text-slate-400 mt-1 block">Peak: 10:00 - 11:30 AM</span>
+                  </div>
+
+                  <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
+                    <span className="text-[11px] text-slate-400 font-semibold uppercase">Currently Inside</span>
+                    <div className="text-2xl font-black text-emerald-400 font-mono mt-1">{currentlyInsideCount}</div>
+                    <span className="text-[10px] text-slate-400 mt-1 block">Active on-site badges</span>
+                  </div>
+
+                  <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
+                    <span className="text-[11px] text-slate-400 font-semibold uppercase">Cloud Storage</span>
+                    <div className="text-2xl font-black text-white font-mono mt-1">{storagePercentage.toFixed(1)}%</div>
+                    <span className="text-[10px] text-slate-400 mt-1 block">{calculatedStorageMB.toFixed(1)} MB / 1,024 MB</span>
+                  </div>
+                </div>
+
+                {/* Quick Overview Table */}
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="font-bold text-sm text-white">Live On-Premises Visitors</h2>
+                    <button onClick={() => setActiveTab('inside')} className="text-xs text-sky-400 hover:underline">View All →</button>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-950 text-slate-400 font-mono text-[10px] uppercase">
+                        <tr>
+                          <th className="p-3">Pass ID</th>
+                          <th className="p-3">Visitor Name</th>
+                          <th className="p-3">Host Personnel</th>
+                          <th className="p-3">Check-In</th>
+                          <th className="p-3">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800">
+                        {visitors.filter(v => v.status === 'INSIDE').map(v => (
+                          <tr key={v.id} className="hover:bg-slate-800/40">
+                            <td className="p-3 font-mono font-bold text-sky-400">{v.id}</td>
+                            <td className="p-3 font-bold text-white">{v.name}</td>
+                            <td className="p-3">{v.host} <span className="text-[10px] text-slate-400">({v.hostDept})</span></td>
+                            <td className="p-3 font-mono">{v.checkIn}</td>
+                            <td className="p-3">
+                              <button
+                                onClick={() => handleCheckOut(v.id)}
+                                className="bg-slate-800 hover:bg-rose-900 text-rose-300 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition"
+                              >
+                                Check Out
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2 & 3: ALL VISITORS / CURRENTLY INSIDE */}
+            {(activeTab === 'all' || activeTab === 'inside') && (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h1 className="text-xl font-black text-white">
+                      {activeTab === 'inside' ? 'Currently On Premises' : 'Master Visitor Register'}
+                    </h1>
+                    <p className="text-xs text-slate-400">Search and filter active or past campus access logs</p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="Search name, host, ID..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500 w-52"
+                    />
+                    <select
+                      value={filterCategory}
+                      onChange={(e) => setFilterCategory(e.target.value)}
+                      className="bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500"
+                    >
+                      <option value="ALL">All Categories</option>
+                      <option>Clients & Corporate Partners</option>
+                      <option>Vendors / Suppliers</option>
+                      <option>Contractors & Servicing</option>
+                      <option>Interview Candidates</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-950 text-slate-400 font-mono text-[10px] uppercase">
+                        <tr>
+                          <th className="p-3">Pass ID</th>
+                          <th className="p-3">Visitor Name</th>
+                          <th className="p-3">Company</th>
+                          <th className="p-3">Host Personnel</th>
+                          <th className="p-3">In / Out</th>
+                          <th className="p-3">Declared Assets</th>
+                          <th className="p-3">Status</th>
+                          <th className="p-3 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800">
+                        {filteredVisitors
+                          .filter(v => activeTab === 'all' || v.status === 'INSIDE')
+                          .map(v => (
+                            <tr key={v.id} className="hover:bg-slate-800/40">
+                              <td className="p-3 font-mono font-bold text-sky-400">{v.id}</td>
+                              <td className="p-3">
+                                <span className="font-bold text-white block">{v.name}</span>
+                                <span className="text-[10px] text-slate-400">{v.category}</span>
+                              </td>
+                              <td className="p-3">{v.company}</td>
+                              <td className="p-3">
+                                <span className="font-semibold text-slate-200 block">{v.host}</span>
+                                <span className="text-[10px] text-slate-400">{v.hostDept}</span>
+                              </td>
+                              <td className="p-3 font-mono text-[11px]">
+                                <div>In: {v.checkIn}</div>
+                                <div className="text-slate-400">Out: {v.checkOut || '—'}</div>
+                              </td>
+                              <td className="p-3 text-[11px] text-slate-300 max-w-xs truncate">{v.assets}</td>
+                              <td className="p-3">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  v.status === 'INSIDE' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-slate-800 text-slate-400'
+                                }`}>
+                                  {v.status}
+                                </span>
+                              </td>
+                              <td className="p-3 text-right space-x-2">
+                                <button
+                                  onClick={() => setActivePassModal(v)}
+                                  className="p-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 rounded-lg transition"
+                                  title="View Digital Badge"
+                                >
+                                  <i data-lucide="eye" className="w-3.5 h-3.5"></i>
+                                </button>
+                                {v.status === 'INSIDE' && (
+                                  <button
+                                    onClick={() => handleCheckOut(v.id)}
+                                    className="px-2.5 py-1 bg-rose-950/80 hover:bg-rose-900 text-rose-300 rounded-lg text-[10px] font-bold border border-rose-800 transition"
+                                  >
+                                    Check Out
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 4: GATE QR SCANNER */}
+            {activeTab === 'scanner' && (
+              <div className="max-w-xl mx-auto space-y-6">
+                <div className="text-center space-y-1">
+                  <h1 className="text-xl font-black text-white">Security Gate Scanner</h1>
+                  <p className="text-xs text-slate-400">Scan or verify arriving and departing visitor badges</p>
+                </div>
+
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 text-center space-y-4 shadow-xl">
+                  <div className="w-48 h-48 bg-black rounded-2xl mx-auto border-2 border-dashed border-sky-500/50 flex flex-col items-center justify-center p-4 relative overflow-hidden">
+                    <i data-lucide="scan-line" className="w-16 h-16 text-sky-400 animate-pulse"></i>
+                    <span className="text-[10px] text-slate-400 mt-2">Position badge QR in front of gate scanner</span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-xs font-semibold text-slate-300">Manual Token / Pass ID Input</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="e.g. VIS-2026-0901"
+                        value={scannerManualInput}
+                        onChange={(e) => setScannerManualInput(e.target.value)}
+                        className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
+                      />
+                      <button
+                        onClick={() => handleVerifyToken(scannerManualInput)}
+                        className="bg-sky-600 hover:bg-sky-500 text-white font-bold px-4 rounded-xl text-xs transition"
+                      >
+                        Verify
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 5: HOST PERSONNEL MASTER (7 CLEAN HOSTS, ZERO PHONES, ZERO EMAILS) */}
+            {activeTab === 'employees' && (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h1 className="text-xl font-black text-white">Host Personnel Master Directory</h1>
+                    <p className="text-xs text-slate-400">Official active staff roster permitted to receive visitors</p>
+                  </div>
+                  <span className="bg-sky-950 text-sky-400 text-xs px-3 py-1 rounded-full font-mono border border-sky-800">
+                    7 Official Personnel
+                  </span>
+                </div>
+
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-950 text-slate-400 font-mono text-[10px] uppercase">
+                        <tr>
+                          <th className="p-3">Employee ID</th>
+                          <th className="p-3">Full Name</th>
+                          <th className="p-3">Department / Unit</th>
+                          <th className="p-3">Designation</th>
+                          <th className="p-3">System Access Role</th>
+                          <th className="p-3">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800">
+                        {OFFICIAL_EMPLOYEES.map(emp => (
+                          <tr key={emp.id} className="hover:bg-slate-800/40">
+                            <td className="p-3 font-mono font-bold text-sky-400">{emp.id}</td>
+                            <td className="p-3 font-bold text-white">{emp.name}</td>
+                            <td className="p-3">{emp.dept}</td>
+                            <td className="p-3 text-slate-300">{emp.role}</td>
+                            <td className="p-3">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                emp.id === 'VES-0103' ? 'bg-purple-950 text-purple-300 border border-purple-800' :
+                                emp.access.includes('Management') ? 'bg-sky-950 text-sky-300 border border-sky-800' :
+                                'bg-slate-800 text-slate-300'
+                              }`}>
+                                {emp.access}
+                              </span>
+                            </td>
+                            <td className="p-3">
+                              <span className="bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                                {emp.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 6: REPORTS & EXPORTS */}
+            {activeTab === 'reports' && (
+              <div className="max-w-2xl mx-auto space-y-6">
+                <div className="text-center space-y-1">
+                  <h1 className="text-xl font-black text-white">Export & Compliance Reports</h1>
+                  <p className="text-xs text-slate-400">Download formatted visitor access logs</p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl space-y-4">
+                    <div className="w-10 h-10 bg-emerald-950 text-emerald-400 rounded-xl flex items-center justify-center">
+                      <i data-lucide="file-spreadsheet" className="w-5 h-5"></i>
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-white text-sm">Excel Spreadsheet (.xlsx)</h3>
+                      <p className="text-xs text-slate-400 mt-1">Export full structured visitor table with check-in, host, and vehicle data.</p>
+                    </div>
+                    <button
+                      onClick={exportToExcel}
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl text-xs transition"
+                    >
+                      Download Excel
+                    </button>
+                  </div>
+
+                  <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl space-y-4">
+                    <div className="w-10 h-10 bg-sky-950 text-sky-400 rounded-xl flex items-center justify-center">
+                      <i data-lucide="file-text" className="w-5 h-5"></i>
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-white text-sm">Official PDF Register (.pdf)</h3>
+                      <p className="text-xs text-slate-400 mt-1">Export formatted executive report suitable for compliance and records.</p>
+                    </div>
+                    <button
+                      onClick={exportToPDF}
+                      className="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-2.5 rounded-xl text-xs transition"
+                    >
+                      Download PDF
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 7: STORAGE & OUTAGES */}
+            {activeTab === 'storage' && (
+              <div className="max-w-3xl mx-auto space-y-6">
+                <div className="space-y-1">
+                  <h1 className="text-xl font-black text-white">Cloud Storage & Quota Management</h1>
+                  <p className="text-xs text-slate-400">1,024 MB (1 GB) bucket threshold monitor and data purge engine</p>
+                </div>
+
+                <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl space-y-5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-slate-300">Live Bucket Allocation</span>
+                    <span className="font-mono font-bold text-white">{calculatedStorageMB.toFixed(1)} MB / 1,024 MB</span>
+                  </div>
+
+                  <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-slate-800">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        isStorageCritical ? 'bg-rose-500' :
+                        isStorageWarning ? 'bg-amber-500' :
+                        'bg-sky-500'
+                      }`}
+                      style={{ width: `${storagePercentage}%` }}
+                    ></div>
+                  </div>
+
+                  {/* Outage Testing Simulator */}
+                  <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 space-y-3">
+                    <span className="text-xs font-bold text-slate-300 block">Outage Alert Simulator:</span>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => setSimulatedUsageMB(49.2)}
+                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold"
+                      >
+                        Normal State (4.8%)
+                      </button>
+                      <button
+                        onClick={() => setSimulatedUsageMB(785)}
+                        className="px-3 py-1.5 bg-amber-950/80 hover:bg-amber-900 text-amber-300 rounded-lg text-xs font-semibold border border-amber-800"
+                      >
+                        Simulate Warning (76.6%)
+                      </button>
+                      <button
+                        onClick={() => setSimulatedUsageMB(945)}
+                        className="px-3 py-1.5 bg-rose-950/80 hover:bg-rose-900 text-rose-300 rounded-lg text-xs font-semibold border border-rose-800"
+                      >
+                        Simulate Outage Risk (92.3%)
                       </button>
                     </div>
                   </div>
 
-                  <button
-                    type="submit"
-                    className="w-full bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white font-bold py-3 rounded-xl text-xs shadow-lg shadow-sky-600/20 transition flex items-center justify-center gap-2"
-                  >
-                    <i data-lucide="lock" className="w-4 h-4"></i>
-                    <span>Authenticate & Access Dashboard</span>
-                  </button>
-
-                  <div className="text-center pt-2">
+                  <div className="border-t border-slate-800 pt-4 flex items-center justify-between">
+                    <div>
+                      <span className="font-bold text-sm text-white block">Zero-Loss Purge & Archival</span>
+                      <span className="text-xs text-slate-400">Downloads complete Excel backup, then purges heavy photo binaries.</span>
+                    </div>
                     <button
-                      type="button"
-                      onClick={() => {
-                        setIsVisitorIsolated(true);
-                        setViewMode('public');
-                        setRegStep(1);
-                      }}
-                      className="text-xs text-slate-400 hover:text-sky-400 transition"
+                      onClick={handleStoragePurge}
+                      className="bg-rose-600 hover:bg-rose-500 text-white font-bold px-4 py-2 rounded-xl text-xs transition"
                     >
-                      ← Return to Visitor Registration
+                      Export & Purge Media
                     </button>
                   </div>
-                </form>
+                </div>
               </div>
+            )}
+
+          </main>
+        </div>
+      )}
+
+      {/* DISCRETE STAFF PORTAL FOOTER (IN VISITOR MODE ONLY) */}
+      {isVisitorIsolated && (
+        <footer className="py-2 px-4 text-center border-t border-slate-800/40 text-[10px] text-slate-500 flex justify-between items-center bg-slate-950">
+          <span>© VISTA Engg Solutions Private Limited. All rights reserved.</span>
+          <button
+            onClick={() => {
+              setIsVisitorIsolated(false);
+              setViewMode('internal');
+            }}
+            title="Staff Portal Login"
+            className="opacity-40 hover:opacity-100 transition p-1 hover:text-sky-400"
+          >
+            <i data-lucide="shield" className="w-3.5 h-3.5"></i>
+          </button>
+        </footer>
+      )}
+
+      {/* MODAL: ENTRANCE GATE REGISTRATION STANDEE */}
+      {showStandeeModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full space-y-4 text-center shadow-2xl relative">
+            <button
+              onClick={() => setShowStandeeModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1"
+            >
+              <i data-lucide="x" className="w-5 h-5"></i>
+            </button>
+
+            <div className="flex justify-center">
+              <VistaLogo className="h-10" containerClass="border border-slate-200/50 shadow" />
             </div>
-          )}
-<!-- ... existing code ... -->
-          {/* Discrete footer for staff access when in visitor isolation mode */}
-          {isVisitorIsolated && (
-            <footer className="py-2.5 px-4 text-center border-t border-slate-800/40 text-[10px] text-slate-500 flex justify-between items-center bg-slate-950">
-              <span>© VISTA Engg Solutions Private Limited. All rights reserved.</span>
+
+            <div>
+              <h3 className="font-bold text-white text-base">Entrance Gate QR Standee</h3>
+              <p className="text-xs text-slate-400">Scan with phone camera at the gate to self-register</p>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl mx-auto inline-block shadow-inner">
+              <div id="standee-qr-target" className="flex justify-center"></div>
+            </div>
+
+            <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-[10px] font-mono text-sky-400 break-all">
+              {VISITOR_DEDICATED_URL}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => window.print()}
+                className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2.5 rounded-xl text-xs transition"
+              >
+                Print Standee
+              </button>
               <button
                 onClick={() => {
-                  setIsVisitorIsolated(false);
-                  setViewMode('internal');
+                  setShowStandeeModal(false);
+                  setIsVisitorIsolated(true);
+                  setViewMode('public');
+                  setRegStep(1);
                 }}
-                title="Staff Portal Access"
-                className="opacity-40 hover:opacity-100 transition p-1 hover:text-sky-400"
+                className="flex-1 bg-sky-600 hover:bg-sky-500 text-white font-bold py-2.5 rounded-xl text-xs transition"
               >
-                <i data-lucide="shield" className="w-3.5 h-3.5"></i>
+                Open Form
               </button>
-            </footer>
-          )}
-
+            </div>
+          </div>
         </div>
-      );
-    }
+      )}
 
-    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-  </script>
-</body>
-</html>
+      {/* MODAL: DIGITAL VISITOR PASS DETAILS */}
+      {activePassModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-white text-slate-900 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl relative">
+            <button
+              onClick={() => setActivePassModal(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-800 p-1"
+            >
+              <i data-lucide="x" className="w-5 h-5"></i>
+            </button>
+
+            <div className="flex items-center justify-between border-b pb-3 border-slate-200">
+              <VistaLogo className="h-7" />
+              <span className="font-mono font-black text-xs bg-sky-100 text-sky-900 px-2.5 py-1 rounded-full">
+                {activePassModal.id}
+              </span>
+            </div>
+
+            <div className="flex gap-3 items-center">
+              {activePassModal.photo ? (
+                <img src={activePassModal.photo} alt="Visitor" className="w-20 h-20 rounded-2xl object-cover border border-slate-300" />
+              ) : (
+                <div className="w-20 h-20 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400">
+                  <i data-lucide="user" className="w-10 h-10"></i>
+                </div>
+              )}
+              <div>
+                <h3 className="font-black text-base text-slate-900 leading-tight">{activePassModal.name}</h3>
+                <span className="text-xs text-slate-600 block">{activePassModal.company}</span>
+                <span className="text-[10px] bg-sky-100 text-sky-800 font-bold px-2 py-0.5 rounded-full inline-block mt-1">
+                  {activePassModal.category}
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Host Personnel:</span>
+                <span className="font-bold text-slate-800">{activePassModal.host}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Host Department:</span>
+                <span className="font-semibold text-slate-700">{activePassModal.hostDept}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Check-In Time:</span>
+                <span className="font-mono font-bold text-slate-900">{activePassModal.checkIn}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Check-Out:</span>
+                <span className="font-mono font-bold text-slate-900">{activePassModal.checkOut || 'Active Inside'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Declared Assets:</span>
+                <span className="text-slate-700 text-right truncate max-w-[150px]">{activePassModal.assets}</span>
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center justify-center pt-1">
+              <div id="pass-qr-target" className="p-2 bg-white rounded-xl border border-slate-200 shadow-sm"></div>
+              <span className="text-[10px] text-slate-400 font-mono mt-1">Gate Pass Encrypted Token</span>
+            </div>
+
+            <button
+              onClick={() => setActivePassModal(null)}
+              className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-xl text-xs transition"
+            >
+              Close Pass
+            </button>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+
+
