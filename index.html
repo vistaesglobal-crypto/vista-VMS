@@ -96,7 +96,7 @@
       </div>
     );
 
-    const OFFICIAL_EMPLOYEES = [
+    const INITIAL_EMPLOYEES = [
       { id: "VES-0101", name: "Magesh Kumar S", dept: "Indian Operations", role: "Head - Operations", access: "Management / Host", status: "Active" },
       { id: "VES-0102", name: "Mohan D", dept: "Operations", role: "Operations Lead", access: "Management / Host", status: "Active" },
       { id: "VES-0103", name: "Hariprasath", dept: "Frontdesk / Reception", role: "Frontdesk / Reception", access: "Frontdesk / Reception", status: "Active" },
@@ -106,9 +106,10 @@
       { id: "VES-0107", name: "Keerthivasan D", dept: "Engineering & Projects", role: "Project Manager", access: "Host", status: "Active" }
     ];
 
-    const STORAGE_KEY = "VISTA_VMS_DATABASE_PROD_V2";
-    const SESSION_KEY = "VISTA_VMS_SESSION_PROD_V2";
-    const SYNC_TOPIC = "vista/vms/live_sync_stream_v2";
+    const STORAGE_KEY = "VISTA_VMS_DATABASE_PROD_V3";
+    const SESSION_KEY = "VISTA_VMS_SESSION_PROD_V3";
+    const HOSTS_KEY = "VISTA_VMS_HOSTS_PROD_V3";
+    const SYNC_TOPIC = "vista/vms/live_sync_stream_v3";
     const TOTAL_QUOTA_MB = 5120;
 
     function App() {
@@ -133,18 +134,49 @@
       const [loginPass, setLoginPass] = useState('');
       const [loginError, setLoginError] = useState('');
 
-      // Public visitor registration state with Mandatory Photo & Address
+      // Public visitor registration state
       const [step, setStep] = useState(1);
       const [formData, setFormData] = useState({
-        fullName: '', phone: '', address: '', company: '', govtIdLast4: '',
-        hostId: 'VES-0103', purpose: 'Business Meeting', 
-        comeByWalk: true, vehicleNo: '', assetDetails: '', photo: ''
+        fullName: '',
+        phone: '',
+        address: '',
+        personType: 'Fresher / Job Aspirant',
+        organizationName: '',
+        govtIdLast4: '',
+        hostId: 'VES-0103',
+        purpose: 'Interview / Recruitment Drive',
+        comeByWalk: true,
+        vehicleNo: '',
+        assetDetails: '',
+        photo: ''
       });
       const [cameraActive, setCameraActive] = useState(false);
       const [photoError, setPhotoError] = useState('');
       const [registeredBadge, setRegisteredBadge] = useState(null);
 
-      // Clean Initialized State
+      // Editable Host Directory
+      const [employees, setEmployees] = useState(() => {
+        try {
+          const saved = localStorage.getItem(HOSTS_KEY);
+          return saved ? JSON.parse(saved) : INITIAL_EMPLOYEES;
+        } catch (e) {
+          return INITIAL_EMPLOYEES;
+        }
+      });
+
+      const [editingHostId, setEditingHostId] = useState(null);
+      const [editHostForm, setEditHostForm] = useState({ dept: '', role: '', access: '' });
+      const [hostDeleteConfirm, setHostDeleteConfirm] = useState(null);
+
+      useEffect(() => {
+        try {
+          localStorage.setItem(HOSTS_KEY, JSON.stringify(employees));
+        } catch (e) {
+          console.error("Host storage error", e);
+        }
+      }, [employees]);
+
+      // Visitor Store
       const [visitors, setVisitors] = useState(() => {
         try {
           const saved = localStorage.getItem(STORAGE_KEY);
@@ -154,17 +186,22 @@
         }
       });
 
+      // Inspection Modal State for Selected Visitor
+      const [selectedVisitorModal, setSelectedVisitorModal] = useState(null);
+
       // Calendar View State
       const [selectedCalDate, setSelectedCalDate] = useState(new Date());
       const [calFilterDate, setCalFilterDate] = useState(null);
 
       // Analytics Timeframe Filter
-      const [analyticsRange, setAnalyticsRange] = useState('all'); // 'today', 'week', 'month', 'all'
+      const [analyticsRange, setAnalyticsRange] = useState('all');
+
+      // Cloud Sync Connection State
+      const [cloudConnected, setCloudConnected] = useState(false);
 
       const mqttClientRef = useRef(null);
       const broadcastChannelRef = useRef(null);
 
-      // Save visitors locally
       useEffect(() => {
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(visitors));
@@ -173,11 +210,10 @@
         }
       }, [visitors]);
 
-      // Cross-tab and Cross-device synchronization
+      // Cross-Device WebSocket Sync Setup
       useEffect(() => {
-        // BroadcastChannel for instant local syncing between tabs
         if ('BroadcastChannel' in window) {
-          const channel = new BroadcastChannel('vista_vms_sync_channel');
+          const channel = new BroadcastChannel('vista_vms_sync_v3');
           broadcastChannelRef.current = channel;
           channel.onmessage = (event) => {
             if (event.data && event.data.action === 'NEW_VISITOR') {
@@ -188,20 +224,24 @@
           };
         }
 
-        // Live MQTT WebSockets over public secure brokers
         if (window.mqtt) {
-          const client = window.mqtt.connect("wss://broker.emqx.io:8084/mqtt", {
+          // Connect to standard secure WSS HiveMQ public broker
+          const client = window.mqtt.connect("wss://broker.hivemq.com:8884/mqtt", {
             keepalive: 60,
             clientId: 'vista_vms_' + Math.random().toString(16).substring(2, 10),
             clean: true,
-            reconnectPeriod: 2000
+            reconnectPeriod: 2500
           });
 
           mqttClientRef.current = client;
 
           client.on('connect', () => {
+            setCloudConnected(true);
             client.subscribe(SYNC_TOPIC);
           });
+
+          client.on('close', () => setCloudConnected(false));
+          client.on('error', () => setCloudConnected(false));
 
           client.on('message', (topic, message) => {
             if (topic === SYNC_TOPIC) {
@@ -213,7 +253,7 @@
                   setVisitors(prev => prev.map(v => v.id === payload.id ? { ...v, status: 'Checked Out', checkOut: payload.time } : v));
                 }
               } catch (err) {
-                console.error("Sync error", err);
+                console.error("Sync payload error", err);
               }
             }
           });
@@ -239,7 +279,6 @@
       const standeeQrRef = useRef(null);
       const [standeeModalOpen, setStandeeModalOpen] = useState(false);
 
-      // Start Camera for Mandatory Visitor Photo
       const startCamera = async () => {
         setPhotoError('');
         try {
@@ -252,7 +291,6 @@
         }
       };
 
-      // Capture Photo & compress
       const capturePhoto = () => {
         if (!videoRef.current || !canvasRef.current) return;
         const video = videoRef.current;
@@ -269,6 +307,21 @@
           video.srcObject.getTracks().forEach(t => t.stop());
         }
         setCameraActive(false);
+      };
+
+      // Strict Numeric Format Handlers
+      const handlePhoneChange = (e) => {
+        const val = e.target.value;
+        if (/^\d{0,10}$/.test(val)) {
+          setFormData({ ...formData, phone: val });
+        }
+      };
+
+      const handleGovtIdChange = (e) => {
+        const val = e.target.value;
+        if (/^\d{0,4}$/.test(val)) {
+          setFormData({ ...formData, govtIdLast4: val });
+        }
       };
 
       const handleLogin = (e) => {
@@ -301,11 +354,10 @@
         setLoginPass('');
       };
 
-      // Visitor Registration with MANDATORY PHOTO & ADDRESS
+      // Handle Visitor Submission
       const handleVisitorSubmit = (e) => {
         if (e) e.preventDefault();
         
-        // Strict Mandatory Photo Validation
         if (!formData.photo) {
           setPhotoError("Live photo is strictly mandatory for security badge clearance.");
           return;
@@ -313,7 +365,7 @@
 
         const nextSequence = visitors.length + 1;
         const formattedId = `VIS-${String(nextSequence).padStart(4, '0')}`;
-        const hostObj = OFFICIAL_EMPLOYEES.find(emp => emp.id === formData.hostId) || OFFICIAL_EMPLOYEES[2];
+        const hostObj = employees.find(emp => emp.id === formData.hostId) || employees[2] || INITIAL_EMPLOYEES[2];
         const now = new Date();
 
         const newBadge = {
@@ -322,7 +374,10 @@
           name: formData.fullName,
           phone: formData.phone,
           address: formData.address,
-          company: formData.company || "Independent Guest",
+          personType: formData.personType,
+          organizationName: formData.organizationName || "N/A",
+          company: formData.organizationName ? `${formData.personType} (${formData.organizationName})` : formData.personType,
+          govtIdLast4: formData.govtIdLast4,
           host: hostObj.name,
           dept: hostObj.dept,
           purpose: formData.purpose,
@@ -330,18 +385,16 @@
           asset: formData.assetDetails || "None",
           photo: formData.photo,
           status: "Inside",
-          dateString: now.toISOString().slice(0, 10), // YYYY-MM-DD
+          dateString: now.toISOString().slice(0, 10),
           checkIn: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           checkOut: "-",
           timestamp: now.getTime()
         };
 
-        // Broadcast locally
         if (broadcastChannelRef.current) {
           broadcastChannelRef.current.postMessage({ action: 'NEW_VISITOR', data: newBadge });
         }
 
-        // Broadcast over Cloud WebSocket
         if (mqttClientRef.current && mqttClientRef.current.connected) {
           mqttClientRef.current.publish(SYNC_TOPIC, JSON.stringify({
             action: 'NEW_VISITOR',
@@ -368,6 +421,22 @@
 
         const updated = visitors.map(v => v.id === id ? { ...v, status: 'Checked Out', checkOut: timeNow } : v);
         setVisitors(updated);
+      };
+
+      // In-Page Host Master Editing Handlers (Super User & Admin)
+      const startEditingHost = (emp) => {
+        setEditingHostId(emp.id);
+        setEditHostForm({ dept: emp.dept, role: emp.role, access: emp.access });
+      };
+
+      const saveHostEdit = (id) => {
+        setEmployees(employees.map(emp => emp.id === id ? { ...emp, ...editHostForm } : emp));
+        setEditingHostId(null);
+      };
+
+      const deleteHost = (id) => {
+        setEmployees(employees.filter(emp => emp.id !== id));
+        setHostDeleteConfirm(null);
       };
 
       // Camera QR Scanner
@@ -420,7 +489,7 @@
         }
       }, [standeeModalOpen]);
 
-      // Embedded Photos Excel Export
+      // Excel Export with Embedded Photos
       const exportToExcelWithImages = async (dataset = visitors, title = "VISTA_Visitor_Register") => {
         if (!window.ExcelJS) {
           alert("Excel engine loading, please try again in a moment.");
@@ -438,8 +507,10 @@
           { header: "Badge ID", key: "id", width: 14 },
           { header: "Visitor Name", key: "name", width: 22 },
           { header: "Phone", key: "phone", width: 16 },
-          { header: "Address", key: "address", width: 26 },
-          { header: "Company", key: "company", width: 20 },
+          { header: "Type / Category", key: "personType", width: 22 },
+          { header: "Organization", key: "organizationName", width: 22 },
+          { header: "Address", key: "address", width: 28 },
+          { header: "Govt ID (Last 4)", key: "govtIdLast4", width: 16 },
           { header: "Host Personnel", key: "host", width: 22 },
           { header: "Department", key: "dept", width: 22 },
           { header: "Visit Purpose", key: "purpose", width: 24 },
@@ -462,8 +533,10 @@
             id: v.id,
             name: v.name,
             phone: v.phone,
+            personType: v.personType || "-",
+            organizationName: v.organizationName || "-",
             address: v.address || "-",
-            company: v.company,
+            govtIdLast4: v.govtIdLast4 || "-",
             host: v.host,
             dept: v.dept,
             purpose: v.purpose,
@@ -503,7 +576,7 @@
         link.click();
       };
 
-      // Embedded Photos PDF Export
+      // PDF Export with Embedded Photos
       const exportToPDFWithImages = (dataset = visitors, title = "VISTA_Visitor_Register") => {
         if (!window.jspdf) return;
         const { jsPDF } = window.jspdf;
@@ -520,8 +593,8 @@
           "",
           v.id,
           v.name,
+          v.personType || "-",
           v.address || "-",
-          v.company,
           v.host,
           v.dept,
           v.purpose,
@@ -532,7 +605,7 @@
         ]);
 
         doc.autoTable({
-          head: [["Photo", "Badge ID", "Visitor Name", "Address", "Company", "Host", "Dept", "Purpose", "Logistics", "In", "Out", "Status"]],
+          head: [["Photo", "Badge ID", "Visitor Name", "Type", "Address", "Host", "Dept", "Purpose", "Logistics", "In", "Out", "Status"]],
           body: tableBody,
           startY: 24,
           theme: "grid",
@@ -574,7 +647,7 @@
         alert("Zero-Loss Archival complete! Excel workbook with photos exported. Storage cleared.");
       };
 
-      // Timeframe calculations
+      // Filtered Analytics Dataset
       const now = new Date();
       const todayISO = now.toISOString().slice(0, 10);
       const oneWeekAgo = now.getTime() - (7 * 24 * 60 * 60 * 1000);
@@ -585,7 +658,6 @@
       const visitsThisMonth = visitors.filter(v => v.timestamp ? v.timestamp >= oneMonthAgo : true).length;
       const activeInsideCount = visitors.filter(v => v.status === "Inside").length;
 
-      // Filtered Analytics Dataset
       const getFilteredVisitors = () => {
         if (analyticsRange === 'today') return visitors.filter(v => v.dateString === todayISO || (v.timestamp && v.timestamp >= (now.getTime() - 86400000)));
         if (analyticsRange === 'week') return visitors.filter(v => v.timestamp ? v.timestamp >= oneWeekAgo : true);
@@ -595,16 +667,15 @@
 
       const filteredList = getFilteredVisitors();
 
-      // "Who Visits Whom Most" (Top Host Leaderboard)
+      // Top Visited Personnel Calculation
       const hostTrafficMap = {};
-      OFFICIAL_EMPLOYEES.forEach(emp => { hostTrafficMap[emp.name] = 0; });
+      employees.forEach(emp => { hostTrafficMap[emp.name] = 0; });
       filteredList.forEach(v => {
         if (hostTrafficMap[v.host] !== undefined) hostTrafficMap[v.host]++;
         else hostTrafficMap[v.host] = 1;
       });
 
-      const topHosts = Object.entries(hostTrafficMap)
-        .sort((a, b) => b[1] - a[1]);
+      const topHosts = Object.entries(hostTrafficMap).sort((a, b) => b[1] - a[1]);
 
       // Category breakdown
       const purposeStats = {
@@ -619,7 +690,6 @@
       const month = selectedCalDate.getMonth();
       const firstDayOfMonth = new Date(year, month, 1).getDay();
       const daysInMonth = new Date(year, month + 1, 0).getDate();
-
       const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
       const getVisitorsForDay = (day) => {
@@ -628,6 +698,8 @@
       };
 
       const selectedDayVisitors = calFilterDate ? visitors.filter(v => v.dateString === calFilterDate) : [];
+
+      const canManageHosts = currentUser && (currentUser.level === 'super' || currentUser.level === 'admin');
 
       return (
         <div className="min-h-screen flex flex-col">
@@ -645,7 +717,13 @@
                 <VistaLogo className="h-9" />
                 <div>
                   <h1 className="font-bold text-white text-base leading-tight">VISTA Engg Solutions Private Limited</h1>
-                  <p className="text-xs text-cyan-400 font-medium">Visitor Management System</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs text-cyan-400 font-medium">Visitor Management System</p>
+                    <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold ${cloudConnected ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${cloudConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
+                      {cloudConnected ? 'Cloud Sync Live' : 'Local Standby'}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -714,7 +792,7 @@
                     </div>
                   )}
 
-                  {/* Step 1: Contact Details & ADDRESS COLLECTION */}
+                  {/* Step 1: Contact, Address, Type & Strict Numeric Fields */}
                   {step === 2 && (
                     <form onSubmit={(e) => { e.preventDefault(); setStep(3); }}>
                       <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
@@ -724,7 +802,7 @@
 
                       <div className="space-y-3.5">
                         <div>
-                          <label className="block text-xs font-semibold text-slate-300 mb-1">Full Name *</label>
+                          <label className="block text-xs font-semibold text-slate-300 mb-1">Full Name * (Alpha-Numeric)</label>
                           <input 
                             type="text" required
                             value={formData.fullName} 
@@ -733,44 +811,77 @@
                             className="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
                           />
                         </div>
+
+                        {/* STRICT NUMERIC FIELD: Mobile Number */}
                         <div>
-                          <label className="block text-xs font-semibold text-slate-300 mb-1">Mobile Number *</label>
+                          <div className="flex justify-between items-center mb-1">
+                            <label className="block text-xs font-semibold text-slate-300">Mobile Number *</label>
+                            <span className="text-[10px] text-cyan-400 font-bold">Strictly Numeric (10 Digits)</span>
+                          </div>
                           <input 
-                            type="tel" required
+                            type="tel" required inputMode="numeric" pattern="[0-9]{10}"
                             value={formData.phone} 
-                            onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                            placeholder="10-digit mobile number" 
-                            className="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
+                            onChange={handlePhoneChange}
+                            placeholder="e.g. 9876543210" 
+                            className="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:border-cyan-500 focus:outline-none tracking-wider"
                           />
                         </div>
+
                         <div>
-                          <label className="block text-xs font-semibold text-slate-300 mb-1">Residential / Office Address *</label>
+                          <label className="block text-xs font-semibold text-slate-300 mb-1">Residential / Office Address * (Alpha-Numeric)</label>
                           <textarea 
                             required rows="2"
                             value={formData.address} 
                             onChange={(e) => setFormData({...formData, address: e.target.value})}
-                            placeholder="Street, City, State, PIN Code" 
+                            placeholder="Door / Flat No, Street, City, State, PIN" 
                             className="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none resize-none"
                           ></textarea>
                         </div>
+
+                        {/* Dropdown for Type of People */}
                         <div>
-                          <label className="block text-xs font-semibold text-slate-300 mb-1">Representing Company / Organization</label>
+                          <label className="block text-xs font-semibold text-slate-300 mb-1">Type of Person / Visitor Category *</label>
+                          <select 
+                            value={formData.personType} 
+                            onChange={(e) => setFormData({...formData, personType: e.target.value})}
+                            className="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white focus:border-cyan-500 focus:outline-none"
+                          >
+                            <option value="Fresher / Job Aspirant">Fresher / Job Aspirant</option>
+                            <option value="Experienced Candidate">Experienced Candidate</option>
+                            <option value="Company / Corporate Delegate">Company / Corporate Delegate</option>
+                            <option value="Vendor / Supplier Representative">Vendor / Supplier Representative</option>
+                            <option value="Contractor / Service Technician">Contractor / Service Technician</option>
+                            <option value="Client / Customer Visitor">Client / Customer Visitor</option>
+                            <option value="Independent / Personal Guest">Independent / Personal Guest</option>
+                          </select>
+                        </div>
+
+                        {/* Optional Organization / College details */}
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 mb-1">
+                            {formData.personType.includes('Fresher') ? 'College / University Name' : 'Company / Organization Name'}
+                          </label>
                           <input 
                             type="text"
-                            value={formData.company} 
-                            onChange={(e) => setFormData({...formData, company: e.target.value})}
-                            placeholder="e.g. ADE Circuits / Vendor" 
+                            value={formData.organizationName} 
+                            onChange={(e) => setFormData({...formData, organizationName: e.target.value})}
+                            placeholder={formData.personType.includes('Fresher') ? 'e.g. PSG Tech / CIT' : 'e.g. ADE Circuits Pvt Ltd'} 
                             className="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
                           />
                         </div>
+
+                        {/* STRICT NUMERIC FIELD: Govt ID Last 4 Digits */}
                         <div>
-                          <label className="block text-xs font-semibold text-slate-300 mb-1">Govt ID Last 4 Digits (Driving License / Voter ID / Passport) *</label>
+                          <div className="flex justify-between items-center mb-1">
+                            <label className="block text-xs font-semibold text-slate-300">Govt ID Last 4 Digits (Driving License / Passport / Voter ID) *</label>
+                            <span className="text-[10px] text-cyan-400 font-bold">Strictly Numeric (4 Digits)</span>
+                          </div>
                           <input 
-                            type="text" required maxLength="4"
+                            type="text" required inputMode="numeric" pattern="[0-9]{4}"
                             value={formData.govtIdLast4} 
-                            onChange={(e) => setFormData({...formData, govtIdLast4: e.target.value})}
+                            onChange={handleGovtIdChange}
                             placeholder="e.g. 5421" 
-                            className="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
+                            className="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:border-cyan-500 focus:outline-none tracking-widest text-center"
                           />
                         </div>
                       </div>
@@ -798,7 +909,7 @@
                             onChange={(e) => setFormData({...formData, hostId: e.target.value})}
                             className="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white focus:border-cyan-500 focus:outline-none"
                           >
-                            {OFFICIAL_EMPLOYEES.map(emp => (
+                            {employees.map(emp => (
                               <option key={emp.id} value={emp.id}>{emp.name} — {emp.dept} ({emp.role})</option>
                             ))}
                           </select>
@@ -811,8 +922,8 @@
                             onChange={(e) => setFormData({...formData, purpose: e.target.value})}
                             className="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white focus:border-cyan-500 focus:outline-none"
                           >
-                            <option value="Business Meeting">Business Meeting</option>
                             <option value="Interview / Recruitment Drive">Interview / Recruitment Drive</option>
+                            <option value="Business Meeting">Business Meeting</option>
                             <option value="Vendor / Supplier Procurement">Vendor / Supplier Procurement</option>
                             <option value="Maintenance / IT Servicing">Maintenance / IT Servicing</option>
                             <option value="Customer Delivery">Customer Delivery</option>
@@ -827,7 +938,7 @@
                     </form>
                   )}
 
-                  {/* Step 3: Vehicle & Electronic Assets */}
+                  {/* Step 3: Logistics & Carried Assets */}
                   {step === 4 && (
                     <form onSubmit={(e) => { e.preventDefault(); setStep(45); }}>
                       <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
@@ -851,19 +962,19 @@
 
                         {!formData.comeByWalk && (
                           <div>
-                            <label className="block text-xs font-semibold text-slate-300 mb-1">Vehicle Registration Number *</label>
+                            <label className="block text-xs font-semibold text-slate-300 mb-1">Vehicle Registration Number * (Alpha-Numeric)</label>
                             <input 
                               type="text" required={!formData.comeByWalk}
                               value={formData.vehicleNo} 
                               onChange={(e) => setFormData({...formData, vehicleNo: e.target.value})}
-                              placeholder="e.g. TN 38 BX 1234 (Two-wheeler / Car)" 
+                              placeholder="e.g. TN 38 BX 1234" 
                               className="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
                             />
                           </div>
                         )}
 
                         <div>
-                          <label className="block text-xs font-semibold text-slate-300 mb-1">Carried Electronic Devices (Laptop / Tools / External Drives)</label>
+                          <label className="block text-xs font-semibold text-slate-300 mb-1">Carried Electronic Devices (Laptop / Tools / External Drives) (Alpha-Numeric)</label>
                           <input 
                             type="text" 
                             value={formData.assetDetails} 
@@ -881,7 +992,7 @@
                     </form>
                   )}
 
-                  {/* Step 4: MANDATORY LIVE PHOTO CAPTURE */}
+                  {/* Step 4: MANDATORY PHOTO CAPTURE */}
                   {step === 45 && (
                     <div>
                       <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
@@ -960,7 +1071,7 @@
                     </div>
                   )}
 
-                  {/* Step 5: Full Generated Pass */}
+                  {/* Step 5: Generated Pass */}
                   {step === 5 && registeredBadge && (
                     <div className="text-center">
                       <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-3 rounded-xl text-xs font-bold mb-4">
@@ -980,10 +1091,12 @@
                           <img src={registeredBadge.photo} alt="Visitor" className="w-20 h-20 rounded-xl object-cover border border-slate-300 shadow-sm" />
                           <div className="text-xs space-y-1">
                             <div className="font-extrabold text-base text-slate-900">{registeredBadge.name}</div>
-                            <div className="text-slate-600">{registeredBadge.company}</div>
+                            <div className="text-blue-800 font-semibold">{registeredBadge.personType}</div>
+                            {registeredBadge.organizationName && registeredBadge.organizationName !== "N/A" && (
+                              <div className="text-slate-600">{registeredBadge.organizationName}</div>
+                            )}
                             <div className="text-slate-500 text-[11px] truncate max-w-[200px]">📍 {registeredBadge.address}</div>
                             <div className="text-slate-600">Host: <span className="font-semibold text-blue-700">{registeredBadge.host}</span></div>
-                            <div className="text-slate-500">Logistics: <span className="font-semibold text-slate-700">{registeredBadge.logistics}</span></div>
                           </div>
                         </div>
 
@@ -1006,7 +1119,7 @@
                         <button 
                           onClick={() => { 
                             setStep(1); 
-                            setFormData({ fullName: '', phone: '', address: '', company: '', govtIdLast4: '', hostId: 'VES-0103', purpose: 'Business Meeting', comeByWalk: true, vehicleNo: '', assetDetails: '', photo: '' }); 
+                            setFormData({ fullName: '', phone: '', address: '', personType: 'Fresher / Job Aspirant', organizationName: '', govtIdLast4: '', hostId: 'VES-0103', purpose: 'Interview / Recruitment Drive', comeByWalk: true, vehicleNo: '', assetDetails: '', photo: '' }); 
                           }}
                           className="w-1/2 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold text-xs transition"
                         >
@@ -1124,7 +1237,7 @@
                             onClick={() => setActiveTab('employees')} 
                             className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition ${activeTab === 'employees' ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-slate-900'}`}
                           >
-                            <span>📇</span> Host Master (7)
+                            <span>📇</span> Host Master ({employees.length})
                           </button>
                           <button 
                             onClick={() => setActiveTab('storage')} 
@@ -1153,7 +1266,7 @@
                       </div>
                     </aside>
 
-                    {/* Content Area */}
+                    {/* Content View */}
                     <div className="flex-1 p-6 overflow-y-auto">
                       
                       {/* TAB 1: EXECUTIVE ANALYTICS */}
@@ -1165,7 +1278,6 @@
                               <p className="text-xs text-slate-400">Live multi-timeframe analytics and personnel load monitoring</p>
                             </div>
                             
-                            {/* Timeframe Selector */}
                             <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
                               {['today', 'week', 'month', 'all'].map((range) => (
                                 <button
@@ -1179,7 +1291,6 @@
                             </div>
                           </div>
 
-                          {/* Timeframe Metrics Cards */}
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
                               <div className="text-xs text-slate-400 uppercase font-semibold">Today's Visits</div>
@@ -1203,10 +1314,9 @@
                             </div>
                           </div>
 
-                          {/* Deep Intelligence Grid */}
                           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             
-                            {/* "Who Visits Whom Most" Ranking */}
+                            {/* "Who Visits Whom Most" */}
                             <div className="bg-slate-900/50 p-5 rounded-xl border border-slate-800">
                               <div className="flex justify-between items-center mb-4">
                                 <h4 className="text-sm font-bold text-white">Top Visited Personnel</h4>
@@ -1253,15 +1363,19 @@
                               </div>
                             </div>
 
-                            {/* Live Arrival Stream */}
+                            {/* Live Arrival Stream with click-to-open */}
                             <div className="bg-slate-900/50 p-5 rounded-xl border border-slate-800">
-                              <h4 className="text-sm font-bold text-white mb-4">Live Arrivals Stream</h4>
+                              <h4 className="text-sm font-bold text-white mb-4">Live Arrivals Stream (Click to View)</h4>
                               <div className="space-y-2.5 text-xs max-h-64 overflow-y-auto">
                                 {visitors.length === 0 ? (
                                   <div className="text-slate-500 text-center py-8">No arrivals logged yet.</div>
                                 ) : (
                                   visitors.slice(0, 5).map(v => (
-                                    <div key={v.id} className="p-2.5 bg-slate-800/50 border border-slate-700/50 rounded-lg flex items-center gap-3">
+                                    <div 
+                                      key={v.id} 
+                                      onClick={() => setSelectedVisitorModal(v)}
+                                      className="p-2.5 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 rounded-lg flex items-center gap-3 cursor-pointer transition"
+                                    >
                                       <img src={v.photo} alt="Visitor" className="w-10 h-10 rounded-lg object-cover border border-slate-600 shrink-0" />
                                       <div className="min-w-0 flex-1">
                                         <div className="flex justify-between text-[10px] text-cyan-400 font-bold">
@@ -1281,17 +1395,16 @@
                         </div>
                       )}
 
-                      {/* TAB 2: INTERACTIVE CALENDAR VIEW WITH EMBEDDED EXPORTS */}
+                      {/* TAB 2: CALENDAR HEATMAP & LOG */}
                       {activeTab === 'calendar' && (
                         <div className="space-y-6">
                           <div className="flex justify-between items-center flex-wrap gap-4">
                             <div>
                               <h2 className="text-xl font-bold text-white">Monthly Footfall Calendar Heatmap</h2>
-                              <p className="text-xs text-slate-400">Numerical footfall counts displayed inside each day cell</p>
+                              <p className="text-xs text-slate-400">Click any date box to drill down and review complete visitor details</p>
                             </div>
                             
                             <div className="flex items-center gap-3">
-                              {/* Month Navigators */}
                               <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-xl p-1 text-xs">
                                 <button 
                                   onClick={() => setSelectedCalDate(new Date(year, month - 1, 1))} 
@@ -1308,7 +1421,6 @@
                                 </button>
                               </div>
 
-                              {/* Calendar Exports */}
                               <button 
                                 onClick={() => {
                                   const currentMonthStr = `${year}-${String(month + 1).padStart(2, '0')}`;
@@ -1332,18 +1444,15 @@
                             </div>
                           </div>
 
-                          {/* Calendar Grid */}
                           <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 overflow-hidden">
                             <div className="grid grid-cols-7 gap-2 text-center text-xs font-bold text-slate-400 pb-3 border-b border-slate-800">
                               <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
                             </div>
                             <div className="grid grid-cols-7 gap-2 pt-2">
-                              {/* Empty padding days */}
                               {Array.from({ length: firstDayOfMonth }).map((_, i) => (
                                 <div key={`empty-${i}`} className="calendar-cell bg-slate-950/30 rounded-xl border border-slate-800/30"></div>
                               ))}
 
-                              {/* Days of the month */}
                               {Array.from({ length: daysInMonth }).map((_, i) => {
                                 const day = i + 1;
                                 const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -1378,8 +1487,8 @@
                             <div className="bg-slate-900/80 p-5 rounded-2xl border border-cyan-500/40 space-y-4">
                               <div className="flex justify-between items-center flex-wrap gap-3">
                                 <div>
-                                  <h3 className="text-base font-bold text-white">Visitors on {calFilterDate}</h3>
-                                  <p className="text-xs text-slate-400">Detailed logs for this selected date</p>
+                                  <h3 className="text-base font-bold text-white">Visitors on {calFilterDate} (Click Row to View)</h3>
+                                  <p className="text-xs text-slate-400">Detailed records on this selected date</p>
                                 </div>
                                 <div className="flex gap-2">
                                   <button 
@@ -1410,8 +1519,8 @@
                                       <th className="p-3">Photo</th>
                                       <th className="p-3">Badge ID</th>
                                       <th className="p-3">Visitor Name</th>
+                                      <th className="p-3">Type</th>
                                       <th className="p-3">Address</th>
-                                      <th className="p-3">Company</th>
                                       <th className="p-3">Host</th>
                                       <th className="p-3">Check-In</th>
                                       <th className="p-3">Status</th>
@@ -1422,12 +1531,12 @@
                                       <tr><td colSpan="8" className="p-4 text-center text-slate-500">No visitors on this date.</td></tr>
                                     ) : (
                                       selectedDayVisitors.map(v => (
-                                        <tr key={v.id}>
+                                        <tr key={v.id} onClick={() => setSelectedVisitorModal(v)} className="hover:bg-slate-800/60 cursor-pointer">
                                           <td className="p-3"><img src={v.photo} alt="Visitor" className="w-9 h-9 rounded-lg object-cover border border-slate-700" /></td>
                                           <td className="p-3 font-mono font-bold text-cyan-400">{v.id}</td>
                                           <td className="p-3 font-bold text-white">{v.name}</td>
+                                          <td className="p-3 text-cyan-300">{v.personType || "-"}</td>
                                           <td className="p-3 text-slate-400 max-w-[180px] truncate">{v.address || "-"}</td>
-                                          <td className="p-3 text-slate-400">{v.company}</td>
                                           <td className="p-3 text-slate-300">{v.host}</td>
                                           <td className="p-3 text-slate-400">{v.checkIn}</td>
                                           <td className="p-3"><span className="text-emerald-400 font-bold">{v.status}</span></td>
@@ -1443,13 +1552,13 @@
                         </div>
                       )}
 
-                      {/* TAB 3: ALL VISITORS MASTER REGISTER */}
+                      {/* TAB 3: ALL VISITORS MASTER REGISTER (CLICKABLE ROWS) */}
                       {activeTab === 'visitors' && (
                         <div>
                           <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
                             <div>
-                              <h3 className="text-lg font-bold text-white">Master Visitor Register</h3>
-                              <p className="text-xs text-slate-400">Complete audit log with captured pictures and physical addresses</p>
+                              <h3 className="text-lg font-bold text-white">Master Visitor Register (Click Row to View Full Details)</h3>
+                              <p className="text-xs text-slate-400">Complete audit log with captured pictures, address, and category</p>
                             </div>
                             <div className="flex gap-2">
                               <button onClick={() => exportToExcelWithImages(visitors, "VISTA_Master_Register")} className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition">
@@ -1468,8 +1577,8 @@
                                   <th className="p-3">Photo</th>
                                   <th className="p-3">Badge ID</th>
                                   <th className="p-3">Visitor Name</th>
+                                  <th className="p-3">Type</th>
                                   <th className="p-3">Address</th>
-                                  <th className="p-3">Company</th>
                                   <th className="p-3">Host Personnel</th>
                                   <th className="p-3">Logistics</th>
                                   <th className="p-3">Check-In</th>
@@ -1485,14 +1594,18 @@
                                   </tr>
                                 ) : (
                                   visitors.map(vis => (
-                                    <tr key={vis.id} className="hover:bg-slate-800/40">
+                                    <tr 
+                                      key={vis.id} 
+                                      onClick={() => setSelectedVisitorModal(vis)}
+                                      className="hover:bg-slate-800/60 cursor-pointer transition"
+                                    >
                                       <td className="p-3">
                                         <img src={vis.photo} alt="Visitor" className="w-9 h-9 rounded-lg object-cover border border-slate-700 shadow-sm" />
                                       </td>
                                       <td className="p-3 font-mono text-cyan-400 font-bold">{vis.id}</td>
                                       <td className="p-3 font-bold text-white">{vis.name}</td>
+                                      <td className="p-3 text-cyan-300">{vis.personType || "-"}</td>
                                       <td className="p-3 text-slate-400 max-w-[180px] truncate" title={vis.address}>{vis.address || "-"}</td>
-                                      <td className="p-3 text-slate-400">{vis.company}</td>
                                       <td className="p-3 text-slate-300">{vis.host}</td>
                                       <td className="p-3 text-slate-400">{vis.logistics}</td>
                                       <td className="p-3 text-slate-400">{vis.checkIn}</td>
@@ -1502,7 +1615,7 @@
                                           {vis.status}
                                         </span>
                                       </td>
-                                      <td className="p-3">
+                                      <td className="p-3" onClick={(e) => e.stopPropagation()}>
                                         {vis.status === 'Inside' && (
                                           <button 
                                             onClick={() => handleCheckOut(vis.id)}
@@ -1526,7 +1639,7 @@
                         <div>
                           <div className="flex justify-between items-center mb-4">
                             <div>
-                              <h3 className="text-lg font-bold text-white">Guests Currently Inside Campus</h3>
+                              <h3 className="text-lg font-bold text-white">Guests Currently Inside Campus (Click Row to View)</h3>
                               <p className="text-xs text-slate-400">Real-time head-count for emergency safety and gate clearance</p>
                             </div>
                             <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-bold">
@@ -1541,6 +1654,7 @@
                                   <th className="p-3">Photo</th>
                                   <th className="p-3">Badge ID</th>
                                   <th className="p-3">Visitor Name</th>
+                                  <th className="p-3">Type</th>
                                   <th className="p-3">Address</th>
                                   <th className="p-3">Host Personnel</th>
                                   <th className="p-3">Purpose</th>
@@ -1551,21 +1665,26 @@
                               <tbody className="divide-y divide-slate-800 bg-slate-900/40">
                                 {visitors.filter(v => v.status === 'Inside').length === 0 ? (
                                   <tr>
-                                    <td colSpan="8" className="p-6 text-center text-slate-500">No visitors currently on premises.</td>
+                                    <td colSpan="9" className="p-6 text-center text-slate-500">No visitors currently on premises.</td>
                                   </tr>
                                 ) : (
                                   visitors.filter(v => v.status === 'Inside').map(vis => (
-                                    <tr key={vis.id} className="hover:bg-slate-800/40">
+                                    <tr 
+                                      key={vis.id} 
+                                      onClick={() => setSelectedVisitorModal(vis)}
+                                      className="hover:bg-slate-800/60 cursor-pointer"
+                                    >
                                       <td className="p-3">
                                         <img src={vis.photo} alt="Visitor" className="w-9 h-9 rounded-lg object-cover border border-slate-700" />
                                       </td>
                                       <td className="p-3 font-mono text-cyan-400 font-bold">{vis.id}</td>
                                       <td className="p-3 font-bold text-white">{vis.name}</td>
+                                      <td className="p-3 text-cyan-300">{vis.personType || "-"}</td>
                                       <td className="p-3 text-slate-400 max-w-[180px] truncate">{vis.address || "-"}</td>
                                       <td className="p-3 text-slate-300">{vis.host}</td>
                                       <td className="p-3 text-slate-400">{vis.purpose}</td>
                                       <td className="p-3 text-slate-400">{vis.checkIn}</td>
-                                      <td className="p-3">
+                                      <td className="p-3" onClick={(e) => e.stopPropagation()}>
                                         <button 
                                           onClick={() => handleCheckOut(vis.id)}
                                           className="px-2.5 py-1 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg hover:bg-amber-500/30 font-semibold"
@@ -1616,15 +1735,19 @@
                         </div>
                       )}
 
-                      {/* TAB 6: HOST MASTER */}
+                      {/* TAB 6: HOST MASTER WITH IN-PAGE EDIT & TRASH CONFIRMATION */}
                       {activeTab === 'employees' && (
                         <div>
-                          <div className="flex justify-between items-center mb-4">
+                          <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
                             <div>
                               <h3 className="text-lg font-bold text-white">Host Personnel Master Directory</h3>
-                              <p className="text-xs text-slate-400">Strictly filtered: Zero contact phones or emails exposed.</p>
+                              <p className="text-xs text-slate-400">
+                                {canManageHosts ? "Super User & Admin Mode: In-page roles, department editing, and deletion enabled." : "Strictly filtered: Zero contact phones or emails exposed."}
+                              </p>
                             </div>
-                            <span className="px-3 py-1 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-full text-xs font-semibold">Official 7-Host Roster</span>
+                            <span className="px-3 py-1 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-full text-xs font-semibold">
+                              {employees.length} Authorized Hosts
+                            </span>
                           </div>
 
                           <div className="overflow-x-auto rounded-xl border border-slate-800">
@@ -1634,26 +1757,110 @@
                                   <th className="p-3">Employee ID</th>
                                   <th className="p-3">Full Name</th>
                                   <th className="p-3">Department / Unit</th>
-                                  <th className="p-3">Designation</th>
+                                  <th className="p-3">Designation / Responsibility</th>
                                   <th className="p-3">System Access Role</th>
                                   <th className="p-3">Status</th>
+                                  {canManageHosts && <th className="p-3 text-center">Manage</th>}
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-800 bg-slate-900/40">
-                                {OFFICIAL_EMPLOYEES.map(emp => (
-                                  <tr key={emp.id} className="hover:bg-slate-800/40">
-                                    <td className="p-3 font-mono text-cyan-400 font-bold">{emp.id}</td>
-                                    <td className="p-3 font-bold text-white">{emp.name}</td>
-                                    <td className="p-3 text-slate-300">{emp.dept}</td>
-                                    <td className="p-3 text-slate-400">{emp.role}</td>
-                                    <td className="p-3">
-                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                                        {emp.access}
-                                      </span>
-                                    </td>
-                                    <td className="p-3"><span className="text-emerald-400 font-semibold">● Active</span></td>
-                                  </tr>
-                                ))}
+                                {employees.map(emp => {
+                                  const isEditing = editingHostId === emp.id;
+                                  return (
+                                    <tr key={emp.id} className="hover:bg-slate-800/40">
+                                      <td className="p-3 font-mono text-cyan-400 font-bold">{emp.id}</td>
+                                      <td className="p-3 font-bold text-white">{emp.name}</td>
+                                      
+                                      {/* Department */}
+                                      <td className="p-3">
+                                        {isEditing ? (
+                                          <input 
+                                            type="text" 
+                                            value={editHostForm.dept} 
+                                            onChange={(e) => setEditHostForm({ ...editHostForm, dept: e.target.value })}
+                                            className="bg-slate-950 border border-cyan-500 rounded px-2 py-1 text-xs text-white"
+                                          />
+                                        ) : (
+                                          <span className="text-slate-300">{emp.dept}</span>
+                                        )}
+                                      </td>
+
+                                      {/* Designation */}
+                                      <td className="p-3">
+                                        {isEditing ? (
+                                          <input 
+                                            type="text" 
+                                            value={editHostForm.role} 
+                                            onChange={(e) => setEditHostForm({ ...editHostForm, role: e.target.value })}
+                                            className="bg-slate-950 border border-cyan-500 rounded px-2 py-1 text-xs text-white"
+                                          />
+                                        ) : (
+                                          <span className="text-slate-400">{emp.role}</span>
+                                        )}
+                                      </td>
+
+                                      {/* Access Role */}
+                                      <td className="p-3">
+                                        {isEditing ? (
+                                          <select 
+                                            value={editHostForm.access} 
+                                            onChange={(e) => setEditHostForm({ ...editHostForm, access: e.target.value })}
+                                            className="bg-slate-950 border border-cyan-500 rounded px-2 py-1 text-xs text-white"
+                                          >
+                                            <option value="Host">Host</option>
+                                            <option value="Management / Host">Management / Host</option>
+                                            <option value="Frontdesk / Reception">Frontdesk / Reception</option>
+                                          </select>
+                                        ) : (
+                                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                                            {emp.access}
+                                          </span>
+                                        )}
+                                      </td>
+
+                                      <td className="p-3"><span className="text-emerald-400 font-semibold">● Active</span></td>
+
+                                      {/* Super User / Admin Actions */}
+                                      {canManageHosts && (
+                                        <td className="p-3 text-center">
+                                          {isEditing ? (
+                                            <div className="flex items-center justify-center gap-2">
+                                              <button 
+                                                onClick={() => saveHostEdit(emp.id)}
+                                                className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-bold"
+                                              >
+                                                Save
+                                              </button>
+                                              <button 
+                                                onClick={() => setEditingHostId(null)}
+                                                className="px-2 py-1 bg-slate-800 text-slate-400 rounded text-[11px]"
+                                              >
+                                                Cancel
+                                              </button>
+                                            </div>
+                                          ) : (
+                                            <div className="flex items-center justify-center gap-2">
+                                              <button 
+                                                onClick={() => startEditingHost(emp)}
+                                                title="Edit Roles & Responsibility"
+                                                className="px-2 py-1 bg-blue-600/20 text-blue-400 border border-blue-600/30 hover:bg-blue-600/30 rounded text-[11px] font-semibold"
+                                              >
+                                                ✏️ Edit
+                                              </button>
+                                              <button 
+                                                onClick={() => setHostDeleteConfirm(emp)}
+                                                title="Delete Host"
+                                                className="px-2 py-1 bg-rose-600/20 text-rose-400 border border-rose-600/30 hover:bg-rose-600/30 rounded text-[11px] font-semibold"
+                                              >
+                                                🗑️ Trash
+                                              </button>
+                                            </div>
+                                          )}
+                                        </td>
+                                      )}
+                                    </tr>
+                                  );
+                                })}
                               </tbody>
                             </table>
                           </div>
@@ -1675,9 +1882,9 @@
                               <p className="text-[10px] text-slate-500 mt-1">Text-based visitor logs & host tables</p>
                             </div>
                             <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-800">
-                              <div className="text-xs text-slate-400 uppercase font-semibold">Compressed Photos</div>
+                              <div className="text-xs text-slate-400 uppercase font-semibold">Compressed Photos (WebP/JPEG)</div>
                               <div className="text-xl font-bold text-cyan-400 mt-1">{(effectiveStorageMB - rawStorageMB).toFixed(1)} MB</div>
-                              <p className="text-[10px] text-slate-500 mt-1">Client-side badge photos</p>
+                              <p className="text-[10px] text-slate-500 mt-1">Optimized client-side badge photos</p>
                             </div>
                             <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-800">
                               <div className="text-xs text-slate-400 uppercase font-semibold">Storage Utilization</div>
@@ -1685,6 +1892,31 @@
                                 {storagePct}% ({effectiveStorageMB} / {TOTAL_QUOTA_MB} MB)
                               </div>
                               <p className="text-[10px] text-slate-500 mt-1">Amber alert at 75%, Outage banner at 90%</p>
+                            </div>
+                          </div>
+
+                          <div className="bg-slate-900/80 p-5 rounded-xl border border-slate-800">
+                            <h4 className="text-sm font-bold text-white mb-2">Interactive Outage & Alert Simulator</h4>
+                            <p className="text-xs text-slate-400 mb-4">Simulate storage thresholds to verify alerts and exports.</p>
+                            <div className="flex gap-3 flex-wrap">
+                              <button 
+                                onClick={() => setSimulatedUsageMB(0)}
+                                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold"
+                              >
+                                Reset Live Actual Usage
+                              </button>
+                              <button 
+                                onClick={() => setSimulatedUsageMB(3900.0)}
+                                className="px-3 py-2 bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30 rounded-lg text-xs font-semibold"
+                              >
+                                Simulate Warning State (3,900 MB / 76%)
+                              </button>
+                              <button 
+                                onClick={() => setSimulatedUsageMB(4800.0)}
+                                className="px-3 py-2 bg-rose-500/20 text-rose-400 border border-rose-500/30 hover:bg-rose-500/30 rounded-lg text-xs font-semibold"
+                              >
+                                Simulate Outage State (4,800 MB / 94%)
+                              </button>
                             </div>
                           </div>
 
@@ -1710,6 +1942,103 @@
             )}
           </main>
 
+          {/* VISITOR FULL DETAILS INSPECTION MODAL */}
+          {selectedVisitorModal && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+              <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
+                <button 
+                  onClick={() => setSelectedVisitorModal(null)}
+                  className="absolute top-4 right-4 text-slate-400 hover:text-white text-lg font-bold"
+                >
+                  ✕
+                </button>
+                
+                <div className="flex items-center gap-4 border-b border-slate-800 pb-4 mb-4">
+                  <img src={selectedVisitorModal.photo} alt="Visitor Snapshot" className="w-16 h-16 rounded-xl object-cover border border-slate-600 shadow-md" />
+                  <div>
+                    <div className="text-xs font-mono font-bold text-cyan-400">{selectedVisitorModal.id}</div>
+                    <h3 className="text-lg font-extrabold text-white">{selectedVisitorModal.name}</h3>
+                    <div className="text-xs text-blue-400 font-semibold">{selectedVisitorModal.personType}</div>
+                  </div>
+                </div>
+
+                <div className="space-y-3 text-xs">
+                  <div className="grid grid-cols-2 gap-3 bg-slate-950 p-3 rounded-xl border border-slate-800">
+                    <div><span className="text-slate-500 block">Mobile Phone:</span> <span className="font-bold text-white font-mono">{selectedVisitorModal.phone}</span></div>
+                    <div><span className="text-slate-500 block">Govt ID (Last 4):</span> <span className="font-bold text-white font-mono">•••• {selectedVisitorModal.govtIdLast4}</span></div>
+                  </div>
+
+                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                    <span className="text-slate-500 block mb-0.5">Physical Residential / Office Address:</span>
+                    <span className="font-medium text-slate-200">{selectedVisitorModal.address || "No address entered."}</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 bg-slate-950 p-3 rounded-xl border border-slate-800">
+                    <div><span className="text-slate-500 block">Host Personnel:</span> <span className="font-bold text-cyan-300">{selectedVisitorModal.host}</span></div>
+                    <div><span className="text-slate-500 block">Host Department:</span> <span className="font-medium text-slate-300">{selectedVisitorModal.dept}</span></div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 bg-slate-950 p-3 rounded-xl border border-slate-800">
+                    <div><span className="text-slate-500 block">Purpose of Visit:</span> <span className="font-medium text-slate-200">{selectedVisitorModal.purpose}</span></div>
+                    <div><span className="text-slate-500 block">Logistics / Vehicle:</span> <span className="font-medium text-slate-200">{selectedVisitorModal.logistics}</span></div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 bg-slate-950 p-3 rounded-xl border border-slate-800">
+                    <div><span className="text-slate-500 block">Electronic Devices:</span> <span className="font-medium text-slate-200">{selectedVisitorModal.asset}</span></div>
+                    <div><span className="text-slate-500 block">Entry Timestamp:</span> <span className="font-bold text-emerald-400">{selectedVisitorModal.checkIn} ({selectedVisitorModal.dateString})</span></div>
+                  </div>
+                </div>
+
+                <div className="mt-5 flex gap-3">
+                  {selectedVisitorModal.status === 'Inside' && (
+                    <button 
+                      onClick={() => { handleCheckOut(selectedVisitorModal.id); setSelectedVisitorModal(null); }}
+                      className="w-1/2 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs transition"
+                    >
+                      Check Out Guest
+                    </button>
+                  )}
+                  <button 
+                    onClick={() => setSelectedVisitorModal(null)}
+                    className={`${selectedVisitorModal.status === 'Inside' ? 'w-1/2' : 'w-full'} py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-xl text-xs transition`}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* HOST DELETE CONFIRMATION MODAL */}
+          {hostDeleteConfirm && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-slate-900 border border-rose-500/40 rounded-2xl max-w-sm w-full p-6 text-center shadow-2xl">
+                <div className="w-12 h-12 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto mb-3 text-2xl font-bold">
+                  🗑️
+                </div>
+                <h3 className="text-base font-bold text-white mb-2">Delete Host Personnel?</h3>
+                <p className="text-xs text-slate-300 mb-6">
+                  Are you sure you want to remove <strong className="text-white">{hostDeleteConfirm.name} ({hostDeleteConfirm.id})</strong> from the authorized host directory?
+                </p>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => setHostDeleteConfirm(null)}
+                    className="w-1/2 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold"
+                  >
+                    No, Cancel
+                  </button>
+                  <button 
+                    onClick={() => deleteHost(hostDeleteConfirm.id)}
+                    className="w-1/2 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition shadow-lg"
+                  >
+                    Yes, Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Entrance Standee QR Modal */}
           {standeeModalOpen && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
               <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-sm w-full p-6 text-center shadow-2xl relative">
