@@ -20,6 +20,8 @@
     .glass-card { background: rgba(13, 20, 36, 0.85); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.07); }
     .glass-sidebar { background: rgba(10, 16, 30, 0.95); border-right: 1px solid rgba(255, 255, 255, 0.08); }
     .vista-logo-frame { aspect-ratio: 16 / 10; display: inline-flex; align-items: center; justify-content: center; background: #ffffff; padding: 6px 12px; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.3); }
+    .calendar-cell { min-height: 80px; transition: all 0.2s ease; }
+    .calendar-cell:hover { background: rgba(30, 41, 59, 0.7); }
   </style>
 </head>
 <body class="min-h-screen text-slate-100 antialiased selection:bg-cyan-500 selection:text-white">
@@ -104,9 +106,9 @@
       { id: "VES-0107", name: "Keerthivasan D", dept: "Engineering & Projects", role: "Project Manager", access: "Host", status: "Active" }
     ];
 
-    const STORAGE_KEY = "VISTA_VMS_DATABASE_PROD_V1";
-    const SESSION_KEY = "VISTA_VMS_SESSION_PROD_V1";
-    const SYNC_TOPIC = "vista/vms/prod_channel_v1";
+    const STORAGE_KEY = "VISTA_VMS_DATABASE_PROD_V2";
+    const SESSION_KEY = "VISTA_VMS_SESSION_PROD_V2";
+    const SYNC_TOPIC = "vista/vms/live_sync_stream_v2";
     const TOTAL_QUOTA_MB = 5120;
 
     function App() {
@@ -126,19 +128,23 @@
       const [view, setView] = useState(currentUser || isStaffParam ? 'staff' : 'visitor');
       const [activeTab, setActiveTab] = useState('dashboard');
 
+      // Login State
       const [loginId, setLoginId] = useState('');
       const [loginPass, setLoginPass] = useState('');
       const [loginError, setLoginError] = useState('');
 
+      // Public visitor registration state with Mandatory Photo & Address
       const [step, setStep] = useState(1);
       const [formData, setFormData] = useState({
-        fullName: '', phone: '', company: '', govtIdLast4: '',
+        fullName: '', phone: '', address: '', company: '', govtIdLast4: '',
         hostId: 'VES-0103', purpose: 'Business Meeting', 
         comeByWalk: true, vehicleNo: '', assetDetails: '', photo: ''
       });
       const [cameraActive, setCameraActive] = useState(false);
+      const [photoError, setPhotoError] = useState('');
       const [registeredBadge, setRegisteredBadge] = useState(null);
 
+      // Clean Initialized State
       const [visitors, setVisitors] = useState(() => {
         try {
           const saved = localStorage.getItem(STORAGE_KEY);
@@ -148,8 +154,17 @@
         }
       });
 
-      const mqttClientRef = useRef(null);
+      // Calendar View State
+      const [selectedCalDate, setSelectedCalDate] = useState(new Date());
+      const [calFilterDate, setCalFilterDate] = useState(null);
 
+      // Analytics Timeframe Filter
+      const [analyticsRange, setAnalyticsRange] = useState('all'); // 'today', 'week', 'month', 'all'
+
+      const mqttClientRef = useRef(null);
+      const broadcastChannelRef = useRef(null);
+
+      // Save visitors locally
       useEffect(() => {
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(visitors));
@@ -158,44 +173,55 @@
         }
       }, [visitors]);
 
+      // Cross-tab and Cross-device synchronization
       useEffect(() => {
-        if (!window.mqtt) return;
-
-        const client = window.mqtt.connect("wss://broker.emqx.io:8084/mqtt", {
-          keepalive: 60,
-          clientId: 'vista_' + Math.random().toString(16).substring(2, 10),
-          clean: true,
-          reconnectPeriod: 2000
-        });
-
-        mqttClientRef.current = client;
-
-        client.on('connect', () => {
-          client.subscribe(SYNC_TOPIC, (err) => {
-            if (!err) console.log("Real-Time VISTA Gate Sync Active");
-          });
-        });
-
-        client.on('message', (topic, message) => {
-          if (topic === SYNC_TOPIC) {
-            try {
-              const payload = JSON.parse(message.toString());
-              if (payload.action === 'NEW_VISITOR') {
-                setVisitors(prev => {
-                  if (prev.some(v => v.id === payload.data.id)) return prev;
-                  return [payload.data, ...prev];
-                });
-              } else if (payload.action === 'CHECKOUT') {
-                setVisitors(prev => prev.map(v => v.id === payload.id ? { ...v, status: 'Checked Out', checkOut: payload.time } : v));
-              }
-            } catch (err) {
-              console.error("Sync error", err);
+        // BroadcastChannel for instant local syncing between tabs
+        if ('BroadcastChannel' in window) {
+          const channel = new BroadcastChannel('vista_vms_sync_channel');
+          broadcastChannelRef.current = channel;
+          channel.onmessage = (event) => {
+            if (event.data && event.data.action === 'NEW_VISITOR') {
+              setVisitors(prev => prev.some(v => v.id === event.data.data.id) ? prev : [event.data.data, ...prev]);
+            } else if (event.data && event.data.action === 'CHECKOUT') {
+              setVisitors(prev => prev.map(v => v.id === event.data.id ? { ...v, status: 'Checked Out', checkOut: event.data.time } : v));
             }
-          }
-        });
+          };
+        }
+
+        // Live MQTT WebSockets over public secure brokers
+        if (window.mqtt) {
+          const client = window.mqtt.connect("wss://broker.emqx.io:8084/mqtt", {
+            keepalive: 60,
+            clientId: 'vista_vms_' + Math.random().toString(16).substring(2, 10),
+            clean: true,
+            reconnectPeriod: 2000
+          });
+
+          mqttClientRef.current = client;
+
+          client.on('connect', () => {
+            client.subscribe(SYNC_TOPIC);
+          });
+
+          client.on('message', (topic, message) => {
+            if (topic === SYNC_TOPIC) {
+              try {
+                const payload = JSON.parse(message.toString());
+                if (payload.action === 'NEW_VISITOR') {
+                  setVisitors(prev => prev.some(v => v.id === payload.data.id) ? prev : [payload.data, ...prev]);
+                } else if (payload.action === 'CHECKOUT') {
+                  setVisitors(prev => prev.map(v => v.id === payload.id ? { ...v, status: 'Checked Out', checkOut: payload.time } : v));
+                }
+              } catch (err) {
+                console.error("Sync error", err);
+              }
+            }
+          });
+        }
 
         return () => {
-          if (client) client.end();
+          if (broadcastChannelRef.current) broadcastChannelRef.current.close();
+          if (mqttClientRef.current) mqttClientRef.current.end();
         };
       }, []);
 
@@ -213,17 +239,20 @@
       const standeeQrRef = useRef(null);
       const [standeeModalOpen, setStandeeModalOpen] = useState(false);
 
+      // Start Camera for Mandatory Visitor Photo
       const startCamera = async () => {
+        setPhotoError('');
         try {
           setCameraActive(true);
           const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 480, height: 480 } });
           if (videoRef.current) videoRef.current.srcObject = stream;
         } catch (err) {
-          alert("Camera unavailable. Registration can proceed without photo.");
+          alert("Camera permission is required to capture mandatory visitor photo.");
           setCameraActive(false);
         }
       };
 
+      // Capture Photo & compress
       const capturePhoto = () => {
         if (!videoRef.current || !canvasRef.current) return;
         const video = videoRef.current;
@@ -234,6 +263,7 @@
         ctx.drawImage(video, 0, 0, 300, 300);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.65);
         setFormData({ ...formData, photo: dataUrl });
+        setPhotoError('');
 
         if (video.srcObject) {
           video.srcObject.getTracks().forEach(t => t.stop());
@@ -271,18 +301,27 @@
         setLoginPass('');
       };
 
-      // Sequential numbering starting from 1
+      // Visitor Registration with MANDATORY PHOTO & ADDRESS
       const handleVisitorSubmit = (e) => {
         if (e) e.preventDefault();
+        
+        // Strict Mandatory Photo Validation
+        if (!formData.photo) {
+          setPhotoError("Live photo is strictly mandatory for security badge clearance.");
+          return;
+        }
+
         const nextSequence = visitors.length + 1;
         const formattedId = `VIS-${String(nextSequence).padStart(4, '0')}`;
         const hostObj = OFFICIAL_EMPLOYEES.find(emp => emp.id === formData.hostId) || OFFICIAL_EMPLOYEES[2];
+        const now = new Date();
 
         const newBadge = {
           id: formattedId,
           sequence: nextSequence,
           name: formData.fullName,
           phone: formData.phone,
+          address: formData.address,
           company: formData.company || "Independent Guest",
           host: hostObj.name,
           dept: hostObj.dept,
@@ -291,10 +330,18 @@
           asset: formData.assetDetails || "None",
           photo: formData.photo,
           status: "Inside",
-          checkIn: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          checkOut: "-"
+          dateString: now.toISOString().slice(0, 10), // YYYY-MM-DD
+          checkIn: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          checkOut: "-",
+          timestamp: now.getTime()
         };
 
+        // Broadcast locally
+        if (broadcastChannelRef.current) {
+          broadcastChannelRef.current.postMessage({ action: 'NEW_VISITOR', data: newBadge });
+        }
+
+        // Broadcast over Cloud WebSocket
         if (mqttClientRef.current && mqttClientRef.current.connected) {
           mqttClientRef.current.publish(SYNC_TOPIC, JSON.stringify({
             action: 'NEW_VISITOR',
@@ -311,18 +358,19 @@
       const handleCheckOut = (id) => {
         const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         
+        if (broadcastChannelRef.current) {
+          broadcastChannelRef.current.postMessage({ action: 'CHECKOUT', id, time: timeNow });
+        }
+
         if (mqttClientRef.current && mqttClientRef.current.connected) {
-          mqttClientRef.current.publish(SYNC_TOPIC, JSON.stringify({
-            action: 'CHECKOUT',
-            id: id,
-            time: timeNow
-          }));
+          mqttClientRef.current.publish(SYNC_TOPIC, JSON.stringify({ action: 'CHECKOUT', id, time: timeNow }));
         }
 
         const updated = visitors.map(v => v.id === id ? { ...v, status: 'Checked Out', checkOut: timeNow } : v);
         setVisitors(updated);
       };
 
+      // Camera QR Scanner
       useEffect(() => {
         let html5QrCode = null;
         if (activeTab === 'scanner' && scannerActive && window.Html5Qrcode) {
@@ -372,7 +420,8 @@
         }
       }, [standeeModalOpen]);
 
-      const exportToExcelWithImages = async () => {
+      // Embedded Photos Excel Export
+      const exportToExcelWithImages = async (dataset = visitors, title = "VISTA_Visitor_Register") => {
         if (!window.ExcelJS) {
           alert("Excel engine loading, please try again in a moment.");
           return;
@@ -382,16 +431,17 @@
         workbook.creator = "VISTA Visitor Management System";
         workbook.created = new Date();
 
-        const worksheet = workbook.addWorksheet("Visitor Register");
+        const worksheet = workbook.addWorksheet("Visitor Log");
 
         worksheet.columns = [
           { header: "Photo", key: "photo", width: 15 },
           { header: "Badge ID", key: "id", width: 14 },
-          { header: "Visitor Name", key: "name", width: 24 },
+          { header: "Visitor Name", key: "name", width: 22 },
           { header: "Phone", key: "phone", width: 16 },
-          { header: "Company", key: "company", width: 22 },
+          { header: "Address", key: "address", width: 26 },
+          { header: "Company", key: "company", width: 20 },
           { header: "Host Personnel", key: "host", width: 22 },
-          { header: "Department", key: "dept", width: 24 },
+          { header: "Department", key: "dept", width: 22 },
           { header: "Visit Purpose", key: "purpose", width: 24 },
           { header: "Logistics", key: "logistics", width: 18 },
           { header: "Check-In", key: "checkIn", width: 14 },
@@ -405,13 +455,14 @@
         headerRow.height = 25;
         headerRow.alignment = { vertical: "middle", horizontal: "center" };
 
-        visitors.forEach((v, index) => {
+        dataset.forEach((v, index) => {
           const rowNumber = index + 2;
           worksheet.addRow({
             photo: "",
             id: v.id,
             name: v.name,
             phone: v.phone,
+            address: v.address || "-",
             company: v.company,
             host: v.host,
             dept: v.dept,
@@ -448,11 +499,12 @@
         const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
         const link = document.createElement("a");
         link.href = URL.createObjectURL(blob);
-        link.download = `VISTA_Visitor_Register_${new Date().toISOString().slice(0, 10)}.xlsx`;
+        link.download = `${title}_${new Date().toISOString().slice(0, 10)}.xlsx`;
         link.click();
       };
 
-      const exportToPDFWithImages = () => {
+      // Embedded Photos PDF Export
+      const exportToPDFWithImages = (dataset = visitors, title = "VISTA_Visitor_Register") => {
         if (!window.jspdf) return;
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF("l", "mm", "a4");
@@ -462,12 +514,13 @@
         doc.text("VISTA Engg Solutions Private Limited", 14, 14);
         doc.setFontSize(10);
         doc.setTextColor(100);
-        doc.text(`Official Visitor Log • Generated: ${new Date().toLocaleString()}`, 14, 20);
+        doc.text(`Official Visitor Report • Filtered Records: ${dataset.length} • Generated: ${new Date().toLocaleString()}`, 14, 20);
 
-        const tableBody = visitors.map(v => [
+        const tableBody = dataset.map(v => [
           "",
           v.id,
           v.name,
+          v.address || "-",
           v.company,
           v.host,
           v.dept,
@@ -479,25 +532,25 @@
         ]);
 
         doc.autoTable({
-          head: [["Photo", "Badge ID", "Visitor Name", "Company", "Host", "Dept", "Purpose", "Logistics", "In", "Out", "Status"]],
+          head: [["Photo", "Badge ID", "Visitor Name", "Address", "Company", "Host", "Dept", "Purpose", "Logistics", "In", "Out", "Status"]],
           body: tableBody,
           startY: 24,
           theme: "grid",
           headStyles: { fillColor: [17, 28, 78], textColor: [255, 255, 255], fontStyle: "bold" },
           styles: { fontSize: 8, minCellHeight: 16, verticalAlign: "middle" },
           columnStyles: {
-            0: { cellWidth: 18, halign: "center" }
+            0: { cellWidth: 16, halign: "center" }
           },
           didDrawCell: (data) => {
             if (data.section === "body" && data.column.index === 0) {
               const rowIndex = data.row.index;
-              const visitorItem = visitors[rowIndex];
+              const visitorItem = dataset[rowIndex];
               if (visitorItem && visitorItem.photo && visitorItem.photo.startsWith("data:image")) {
                 try {
                   doc.addImage(
                     visitorItem.photo,
                     "JPEG",
-                    data.cell.x + 2,
+                    data.cell.x + 1.5,
                     data.cell.y + 1,
                     14,
                     14
@@ -510,7 +563,7 @@
           }
         });
 
-        doc.save(`VISTA_Visitor_Register_${new Date().toISOString().slice(0, 10)}.pdf`);
+        doc.save(`${title}_${new Date().toISOString().slice(0, 10)}.pdf`);
       };
 
       const handleStoragePurge = async () => {
@@ -521,24 +574,60 @@
         alert("Zero-Loss Archival complete! Excel workbook with photos exported. Storage cleared.");
       };
 
-      // Accurate metric variables
+      // Timeframe calculations
+      const now = new Date();
+      const todayISO = now.toISOString().slice(0, 10);
+      const oneWeekAgo = now.getTime() - (7 * 24 * 60 * 60 * 1000);
+      const oneMonthAgo = now.getTime() - (30 * 24 * 60 * 60 * 1000);
+
+      const visitsToday = visitors.filter(v => v.dateString === todayISO || (v.timestamp && v.timestamp >= (now.getTime() - 86400000))).length;
+      const visitsThisWeek = visitors.filter(v => v.timestamp ? v.timestamp >= oneWeekAgo : true).length;
+      const visitsThisMonth = visitors.filter(v => v.timestamp ? v.timestamp >= oneMonthAgo : true).length;
       const activeInsideCount = visitors.filter(v => v.status === "Inside").length;
-      const todayTotalVisits = visitors.length;
-      const totalCampusFootfall = visitors.length;
 
-      const deptCounts = {
-        "Indian Operations": visitors.filter(v => v.dept.includes("Indian Operations")).length,
-        "Operations": visitors.filter(v => v.dept === "Operations").length,
-        "Engineering & Projects": visitors.filter(v => v.dept.includes("Engineering")).length,
-        "Frontdesk / Reception": visitors.filter(v => v.dept.includes("Frontdesk")).length,
+      // Filtered Analytics Dataset
+      const getFilteredVisitors = () => {
+        if (analyticsRange === 'today') return visitors.filter(v => v.dateString === todayISO || (v.timestamp && v.timestamp >= (now.getTime() - 86400000)));
+        if (analyticsRange === 'week') return visitors.filter(v => v.timestamp ? v.timestamp >= oneWeekAgo : true);
+        if (analyticsRange === 'month') return visitors.filter(v => v.timestamp ? v.timestamp >= oneMonthAgo : true);
+        return visitors;
       };
 
+      const filteredList = getFilteredVisitors();
+
+      // "Who Visits Whom Most" (Top Host Leaderboard)
+      const hostTrafficMap = {};
+      OFFICIAL_EMPLOYEES.forEach(emp => { hostTrafficMap[emp.name] = 0; });
+      filteredList.forEach(v => {
+        if (hostTrafficMap[v.host] !== undefined) hostTrafficMap[v.host]++;
+        else hostTrafficMap[v.host] = 1;
+      });
+
+      const topHosts = Object.entries(hostTrafficMap)
+        .sort((a, b) => b[1] - a[1]);
+
+      // Category breakdown
       const purposeStats = {
-        clients: visitors.length ? Math.round((visitors.filter(v => v.purpose === "Business Meeting").length / visitors.length) * 100) : 0,
-        vendors: visitors.length ? Math.round((visitors.filter(v => v.purpose.includes("Vendor")).length / visitors.length) * 100) : 0,
-        it: visitors.length ? Math.round((visitors.filter(v => v.purpose.includes("Maintenance")).length / visitors.length) * 100) : 0,
-        interviews: visitors.length ? Math.round((visitors.filter(v => v.purpose.includes("Interview")).length / visitors.length) * 100) : 0
+        clients: filteredList.length ? Math.round((filteredList.filter(v => v.purpose === "Business Meeting").length / filteredList.length) * 100) : 0,
+        vendors: filteredList.length ? Math.round((filteredList.filter(v => v.purpose.includes("Vendor")).length / filteredList.length) * 100) : 0,
+        it: filteredList.length ? Math.round((filteredList.filter(v => v.purpose.includes("Maintenance")).length / filteredList.length) * 100) : 0,
+        interviews: filteredList.length ? Math.round((filteredList.filter(v => v.purpose.includes("Interview")).length / filteredList.length) * 100) : 0
       };
+
+      // Calendar Helper Engine
+      const year = selectedCalDate.getFullYear();
+      const month = selectedCalDate.getMonth();
+      const firstDayOfMonth = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+      const getVisitorsForDay = (day) => {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        return visitors.filter(v => v.dateString === dateStr);
+      };
+
+      const selectedDayVisitors = calFilterDate ? visitors.filter(v => v.dateString === calFilterDate) : [];
 
       return (
         <div className="min-h-screen flex flex-col">
@@ -606,15 +695,13 @@
                       <p className="text-sm text-slate-400 mb-6">Please complete touchless self-registration to receive your instant digital pass.</p>
                       
                       <div className="grid grid-cols-2 gap-4 mb-6">
-                        {/* Dynamic Footfall starting from 0 */}
                         <div className="bg-slate-900/80 p-4 rounded-xl border border-slate-800">
                           <div className="text-xs text-slate-400 uppercase font-semibold">Total Campus Footfall</div>
-                          <div className="text-2xl font-bold text-white mt-1">{totalCampusFootfall}</div>
+                          <div className="text-2xl font-bold text-white mt-1">{visitors.length}</div>
                         </div>
-                        {/* Dynamic Sequence starting from #1 */}
                         <div className="bg-slate-900/80 p-4 rounded-xl border border-slate-800">
                           <div className="text-xs text-slate-400 uppercase font-semibold">Today's Sequence #</div>
-                          <div className="text-2xl font-bold text-cyan-400 mt-1">#{todayTotalVisits + 1}</div>
+                          <div className="text-2xl font-bold text-cyan-400 mt-1">#{visitors.length + 1}</div>
                         </div>
                       </div>
 
@@ -627,6 +714,7 @@
                     </div>
                   )}
 
+                  {/* Step 1: Contact Details & ADDRESS COLLECTION */}
                   {step === 2 && (
                     <form onSubmit={(e) => { e.preventDefault(); setStep(3); }}>
                       <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
@@ -634,7 +722,7 @@
                         <span className="text-xs text-cyan-400 font-bold">25%</span>
                       </div>
 
-                      <div className="space-y-4">
+                      <div className="space-y-3.5">
                         <div>
                           <label className="block text-xs font-semibold text-slate-300 mb-1">Full Name *</label>
                           <input 
@@ -656,6 +744,16 @@
                           />
                         </div>
                         <div>
+                          <label className="block text-xs font-semibold text-slate-300 mb-1">Residential / Office Address *</label>
+                          <textarea 
+                            required rows="2"
+                            value={formData.address} 
+                            onChange={(e) => setFormData({...formData, address: e.target.value})}
+                            placeholder="Street, City, State, PIN Code" 
+                            className="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none resize-none"
+                          ></textarea>
+                        </div>
+                        <div>
                           <label className="block text-xs font-semibold text-slate-300 mb-1">Representing Company / Organization</label>
                           <input 
                             type="text"
@@ -666,7 +764,7 @@
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-semibold text-slate-300 mb-1">Govt ID Last 4 Digits (Aadhaar / DL / Voter ID) *</label>
+                          <label className="block text-xs font-semibold text-slate-300 mb-1">Govt ID Last 4 Digits (Driving License / Voter ID / Passport) *</label>
                           <input 
                             type="text" required maxLength="4"
                             value={formData.govtIdLast4} 
@@ -684,6 +782,7 @@
                     </form>
                   )}
 
+                  {/* Step 2: Host & Purpose */}
                   {step === 3 && (
                     <form onSubmit={(e) => { e.preventDefault(); setStep(4); }}>
                       <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
@@ -710,7 +809,7 @@
                           <select 
                             value={formData.purpose} 
                             onChange={(e) => setFormData({...formData, purpose: e.target.value})}
-                            className="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
+                            className="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white focus:border-cyan-500 focus:outline-none"
                           >
                             <option value="Business Meeting">Business Meeting</option>
                             <option value="Interview / Recruitment Drive">Interview / Recruitment Drive</option>
@@ -728,6 +827,7 @@
                     </form>
                   )}
 
+                  {/* Step 3: Vehicle & Electronic Assets */}
                   {step === 4 && (
                     <form onSubmit={(e) => { e.preventDefault(); setStep(45); }}>
                       <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
@@ -763,7 +863,7 @@
                         )}
 
                         <div>
-                          <label className="block text-xs font-semibold text-slate-300 mb-1">Carried Electronic Devices (Laptop / Toolkits / Hard Disks)</label>
+                          <label className="block text-xs font-semibold text-slate-300 mb-1">Carried Electronic Devices (Laptop / Tools / External Drives)</label>
                           <input 
                             type="text" 
                             value={formData.assetDetails} 
@@ -781,37 +881,47 @@
                     </form>
                   )}
 
+                  {/* Step 4: MANDATORY LIVE PHOTO CAPTURE */}
                   {step === 45 && (
                     <div>
                       <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
-                        <h3 className="text-base font-bold text-white">Step 4 of 4: Live Badge Photo</h3>
+                        <h3 className="text-base font-bold text-white">Step 4 of 4: Live Badge Photo <span className="text-rose-400">*</span></h3>
                         <span className="text-xs text-cyan-400 font-bold">100%</span>
                       </div>
 
                       <div className="space-y-4 text-center">
                         <canvas ref={canvasRef} className="hidden"></canvas>
+
+                        {photoError && (
+                          <div className="p-2.5 bg-rose-500/20 border border-rose-500/40 text-rose-400 rounded-xl text-xs font-bold">
+                            ⚠️ {photoError}
+                          </div>
+                        )}
                         
                         {!formData.photo ? (
-                          <div className="relative rounded-2xl overflow-hidden bg-slate-900 border border-slate-700 aspect-square max-w-[280px] mx-auto flex flex-col items-center justify-center">
+                          <div className="relative rounded-2xl overflow-hidden bg-slate-900 border-2 border-dashed border-slate-700 aspect-square max-w-[280px] mx-auto flex flex-col items-center justify-center">
                             {cameraActive ? (
                               <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover"></video>
                             ) : (
                               <div className="p-4 text-center">
                                 <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center mx-auto mb-3 text-2xl">📸</div>
-                                <p className="text-xs text-slate-400 mb-4">Live photo required for instant digital security badge.</p>
+                                <p className="text-xs text-slate-400 mb-4 font-semibold text-amber-300">Mandatory: Live photo must be captured to generate security badge.</p>
                                 <button 
                                   type="button" 
                                   onClick={startCamera}
-                                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs"
+                                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs shadow-lg transition"
                                 >
-                                  Enable Camera
+                                  Open Camera
                                 </button>
                               </div>
                             )}
                           </div>
                         ) : (
-                          <div className="relative rounded-2xl overflow-hidden bg-slate-900 border border-emerald-500/50 aspect-square max-w-[240px] mx-auto">
+                          <div className="relative rounded-2xl overflow-hidden bg-slate-900 border-2 border-emerald-500 aspect-square max-w-[240px] mx-auto shadow-xl">
                             <img src={formData.photo} alt="Visitor Snapshot" className="w-full h-full object-cover" />
+                            <div className="absolute bottom-2 right-2 bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                              ✓ Verified
+                            </div>
                           </div>
                         )}
 
@@ -819,9 +929,9 @@
                           <button 
                             type="button" 
                             onClick={capturePhoto}
-                            className="w-full max-w-[280px] py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm shadow-lg mx-auto block"
+                            className="w-full max-w-[280px] py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm shadow-lg mx-auto block transition"
                           >
-                            Snap Photo
+                            Capture Photo
                           </button>
                         )}
 
@@ -829,7 +939,7 @@
                           <button 
                             type="button" 
                             onClick={() => { setFormData({...formData, photo: ''}); startCamera(); }}
-                            className="text-xs text-amber-400 underline block mx-auto"
+                            className="text-xs text-amber-400 underline block mx-auto font-semibold"
                           >
                             Retake Photo
                           </button>
@@ -841,14 +951,16 @@
                         <button 
                           type="button" 
                           onClick={handleVisitorSubmit}
-                          className="w-2/3 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm transition shadow-lg"
+                          disabled={!formData.photo}
+                          className={`w-2/3 py-2.5 font-bold rounded-xl text-sm transition shadow-lg ${formData.photo ? 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer' : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'}`}
                         >
-                          Generate Pass
+                          {formData.photo ? 'Generate Pass & Submit' : 'Take Photo to Proceed'}
                         </button>
                       </div>
                     </div>
                   )}
 
+                  {/* Step 5: Full Generated Pass */}
                   {step === 5 && registeredBadge && (
                     <div className="text-center">
                       <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-3 rounded-xl text-xs font-bold mb-4">
@@ -865,15 +977,12 @@
                         </div>
 
                         <div className="flex gap-4 items-center mb-4">
-                          {registeredBadge.photo ? (
-                            <img src={registeredBadge.photo} alt="Visitor" className="w-20 h-20 rounded-xl object-cover border border-slate-300 shadow-sm" />
-                          ) : (
-                            <div className="w-20 h-20 rounded-xl bg-slate-100 flex items-center justify-center font-bold text-slate-400 text-xl border">VIS</div>
-                          )}
+                          <img src={registeredBadge.photo} alt="Visitor" className="w-20 h-20 rounded-xl object-cover border border-slate-300 shadow-sm" />
                           <div className="text-xs space-y-1">
                             <div className="font-extrabold text-base text-slate-900">{registeredBadge.name}</div>
                             <div className="text-slate-600">{registeredBadge.company}</div>
-                            <div className="text-slate-600">Host: <span className="font-semibold text-blue-700">{registeredBadge.host}</span> ({registeredBadge.dept})</div>
+                            <div className="text-slate-500 text-[11px] truncate max-w-[200px]">📍 {registeredBadge.address}</div>
+                            <div className="text-slate-600">Host: <span className="font-semibold text-blue-700">{registeredBadge.host}</span></div>
                             <div className="text-slate-500">Logistics: <span className="font-semibold text-slate-700">{registeredBadge.logistics}</span></div>
                           </div>
                         </div>
@@ -897,7 +1006,7 @@
                         <button 
                           onClick={() => { 
                             setStep(1); 
-                            setFormData({ fullName: '', phone: '', company: '', govtIdLast4: '', hostId: 'VES-0103', purpose: 'Business Meeting', comeByWalk: true, vehicleNo: '', assetDetails: '', photo: '' }); 
+                            setFormData({ fullName: '', phone: '', address: '', company: '', govtIdLast4: '', hostId: 'VES-0103', purpose: 'Business Meeting', comeByWalk: true, vehicleNo: '', assetDetails: '', photo: '' }); 
                           }}
                           className="w-1/2 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold text-xs transition"
                         >
@@ -910,7 +1019,7 @@
               </div>
             )}
 
-            {/* 2. STAFF PORTAL */}
+            {/* 2. STAFF & MANAGEMENT PORTAL */}
             {view === 'staff' && (
               <div className="flex-1 flex">
                 {!currentUser ? (
@@ -965,6 +1074,7 @@
                 ) : (
                   <div className="flex-1 flex flex-col md:flex-row">
                     
+                    {/* Sidebar */}
                     <aside className="w-full md:w-64 glass-sidebar p-5 flex flex-col justify-between shrink-0">
                       <div className="space-y-6">
                         <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800 flex items-center gap-3">
@@ -982,7 +1092,13 @@
                             onClick={() => setActiveTab('dashboard')} 
                             className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition ${activeTab === 'dashboard' ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-slate-900'}`}
                           >
-                            <span>📊</span> Dashboard & KPIs
+                            <span>📊</span> Executive Analytics
+                          </button>
+                          <button 
+                            onClick={() => setActiveTab('calendar')} 
+                            className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition ${activeTab === 'calendar' ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-slate-900'}`}
+                          >
+                            <span>📅</span> Calendar Heatmap & Log
                           </button>
                           <button 
                             onClick={() => setActiveTab('visitors')} 
@@ -1008,7 +1124,7 @@
                             onClick={() => setActiveTab('employees')} 
                             className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition ${activeTab === 'employees' ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-slate-900'}`}
                           >
-                            <span>📇</span> Host Personnel Master (7)
+                            <span>📇</span> Host Master (7)
                           </button>
                           <button 
                             onClick={() => setActiveTab('storage')} 
@@ -1021,10 +1137,10 @@
 
                       <div className="pt-4 border-t border-slate-800 space-y-2">
                         <div className="flex gap-2">
-                          <button onClick={exportToExcelWithImages} className="w-1/2 py-2 bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 rounded-lg text-xs font-bold hover:bg-emerald-600/30 transition">
+                          <button onClick={() => exportToExcelWithImages(visitors, "VISTA_Master_Register")} className="w-1/2 py-2 bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 rounded-lg text-xs font-bold hover:bg-emerald-600/30 transition">
                             Excel (+Pics)
                           </button>
-                          <button onClick={exportToPDFWithImages} className="w-1/2 py-2 bg-indigo-600/20 text-indigo-400 border border-indigo-600/30 rounded-lg text-xs font-bold hover:bg-indigo-600/30 transition">
+                          <button onClick={() => exportToPDFWithImages(visitors, "VISTA_Master_Register")} className="w-1/2 py-2 bg-indigo-600/20 text-indigo-400 border border-indigo-600/30 rounded-lg text-xs font-bold hover:bg-indigo-600/30 transition">
                             PDF (+Pics)
                           </button>
                         </div>
@@ -1037,103 +1153,124 @@
                       </div>
                     </aside>
 
+                    {/* Content Area */}
                     <div className="flex-1 p-6 overflow-y-auto">
                       
+                      {/* TAB 1: EXECUTIVE ANALYTICS */}
                       {activeTab === 'dashboard' && (
                         <div className="space-y-6">
                           <div className="flex justify-between items-center flex-wrap gap-3">
                             <div>
-                              <h2 className="text-xl font-bold text-white">Campus Footfall & Analytics Overview</h2>
-                              <p className="text-xs text-slate-400">Live operational sync active across all desks</p>
+                              <h2 className="text-xl font-bold text-white">Campus Footfall & Traffic Intelligence</h2>
+                              <p className="text-xs text-slate-400">Live multi-timeframe analytics and personnel load monitoring</p>
                             </div>
-                            <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-bold">
-                              ● {activeInsideCount} On Premises
-                            </span>
+                            
+                            {/* Timeframe Selector */}
+                            <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+                              {['today', 'week', 'month', 'all'].map((range) => (
+                                <button
+                                  key={range}
+                                  onClick={() => setAnalyticsRange(range)}
+                                  className={`px-3 py-1.5 rounded-lg capitalize font-semibold transition ${analyticsRange === range ? 'bg-cyan-500 text-white' : 'text-slate-400 hover:text-white'}`}
+                                >
+                                  {range === 'all' ? 'All Time' : range}
+                                </button>
+                              ))}
+                            </div>
                           </div>
 
+                          {/* Timeframe Metrics Cards */}
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
-                              <div className="text-xs text-slate-400 uppercase font-semibold">Total Campus Footfall</div>
-                              <div className="text-2xl font-bold text-white mt-1">{totalCampusFootfall}</div>
-                              <span className="text-[10px] text-emerald-400 font-bold">Initial Launch</span>
-                            </div>
-                            <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
                               <div className="text-xs text-slate-400 uppercase font-semibold">Today's Visits</div>
-                              <div className="text-2xl font-bold text-cyan-400 mt-1">{todayTotalVisits}</div>
-                              <span className="text-[10px] text-slate-400">Live Counter</span>
+                              <div className="text-2xl font-bold text-cyan-400 mt-1">{visitsToday}</div>
+                              <span className="text-[10px] text-slate-400">24-hour cycle</span>
                             </div>
                             <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
-                              <div className="text-xs text-slate-400 uppercase font-semibold">Currently Inside</div>
+                              <div className="text-xs text-slate-400 uppercase font-semibold">This Week (7 Days)</div>
+                              <div className="text-2xl font-bold text-white mt-1">{visitsThisWeek}</div>
+                              <span className="text-[10px] text-emerald-400 font-bold">Rolling weekly</span>
+                            </div>
+                            <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+                              <div className="text-xs text-slate-400 uppercase font-semibold">This Month (30 Days)</div>
+                              <div className="text-2xl font-bold text-white mt-1">{visitsThisMonth}</div>
+                              <span className="text-[10px] text-emerald-400 font-bold">Monthly volume</span>
+                            </div>
+                            <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+                              <div className="text-xs text-slate-400 uppercase font-semibold">Currently On-Premises</div>
                               <div className="text-2xl font-bold text-emerald-400 mt-1">{activeInsideCount}</div>
-                              <span className="text-[10px] text-emerald-400 font-bold">Active Badges</span>
-                            </div>
-                            <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
-                              <div className="text-xs text-slate-400 uppercase font-semibold">Cloud Storage Tier</div>
-                              <div className="text-2xl font-bold text-white mt-1">{storagePct}%</div>
-                              <span className="text-[10px] text-slate-400">{effectiveStorageMB} / {TOTAL_QUOTA_MB} MB</span>
+                              <span className="text-[10px] text-emerald-400 font-bold">Active passes</span>
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                          {/* Deep Intelligence Grid */}
+                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             
+                            {/* "Who Visits Whom Most" Ranking */}
                             <div className="bg-slate-900/50 p-5 rounded-xl border border-slate-800">
-                              <h4 className="text-sm font-bold text-white mb-4">Footfall by Category</h4>
-                              <div className="space-y-3 text-xs">
+                              <div className="flex justify-between items-center mb-4">
+                                <h4 className="text-sm font-bold text-white">Top Visited Personnel</h4>
+                                <span className="text-[10px] text-cyan-400 uppercase font-bold">Leaderboard</span>
+                              </div>
+                              <div className="space-y-3">
+                                {topHosts.map(([hostName, count], idx) => {
+                                  const pct = filteredList.length ? Math.round((count / filteredList.length) * 100) : 0;
+                                  return (
+                                    <div key={hostName} className="text-xs">
+                                      <div className="flex justify-between items-center mb-1">
+                                        <span className="text-slate-300 font-medium">#{idx + 1} {hostName}</span>
+                                        <span className="font-bold text-cyan-400">{count} visits ({pct}%)</span>
+                                      </div>
+                                      <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                                        <div className="bg-gradient-to-r from-blue-500 to-cyan-400 h-full" style={{ width: `${pct}%` }}></div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {/* Category Distribution */}
+                            <div className="bg-slate-900/50 p-5 rounded-xl border border-slate-800">
+                              <h4 className="text-sm font-bold text-white mb-4">Visits by Category</h4>
+                              <div className="space-y-3.5 text-xs">
                                 <div>
-                                  <div className="flex justify-between mb-1"><span className="text-slate-300">Clients & Corporate</span><span className="font-bold text-cyan-400">{purposeStats.clients}%</span></div>
+                                  <div className="flex justify-between mb-1"><span className="text-slate-300">Corporate & Clients</span><span className="font-bold text-cyan-400">{purposeStats.clients}%</span></div>
                                   <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden"><div className="bg-cyan-500 h-full" style={{ width: `${purposeStats.clients}%` }}></div></div>
                                 </div>
                                 <div>
-                                  <div className="flex justify-between mb-1"><span className="text-slate-300">Vendors / Suppliers</span><span className="font-bold text-blue-400">{purposeStats.vendors}%</span></div>
+                                  <div className="flex justify-between mb-1"><span className="text-slate-300">Vendors & Procurement</span><span className="font-bold text-blue-400">{purposeStats.vendors}%</span></div>
                                   <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden"><div className="bg-blue-500 h-full" style={{ width: `${purposeStats.vendors}%` }}></div></div>
                                 </div>
                                 <div>
-                                  <div className="flex justify-between mb-1"><span className="text-slate-300">Contractors & IT</span><span className="font-bold text-purple-400">{purposeStats.it}%</span></div>
+                                  <div className="flex justify-between mb-1"><span className="text-slate-300">Maintenance & Servicing</span><span className="font-bold text-purple-400">{purposeStats.it}%</span></div>
                                   <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden"><div className="bg-purple-500 h-full" style={{ width: `${purposeStats.it}%` }}></div></div>
                                 </div>
                                 <div>
-                                  <div className="flex justify-between mb-1"><span className="text-slate-300">Interview Candidates</span><span className="font-bold text-emerald-400">{purposeStats.interviews}%</span></div>
+                                  <div className="flex justify-between mb-1"><span className="text-slate-300">Talent & Interviews</span><span className="font-bold text-emerald-400">{purposeStats.interviews}%</span></div>
                                   <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden"><div className="bg-emerald-500 h-full" style={{ width: `${purposeStats.interviews}%` }}></div></div>
                                 </div>
                               </div>
                             </div>
 
+                            {/* Live Arrival Stream */}
                             <div className="bg-slate-900/50 p-5 rounded-xl border border-slate-800">
-                              <h4 className="text-sm font-bold text-white mb-4">Visits by Department</h4>
-                              <div className="space-y-2 text-xs">
-                                <div className="flex justify-between p-2.5 bg-slate-800/40 rounded-lg">
-                                  <span className="text-slate-300">Indian Operations (Magesh Kumar S)</span>
-                                  <span className="font-bold text-white">{deptCounts["Indian Operations"]} visits</span>
-                                </div>
-                                <div className="flex justify-between p-2.5 bg-slate-800/40 rounded-lg">
-                                  <span className="text-slate-300">Operations & Plant (Mohan D)</span>
-                                  <span className="font-bold text-white">{deptCounts["Operations"]} visits</span>
-                                </div>
-                                <div className="flex justify-between p-2.5 bg-slate-800/40 rounded-lg">
-                                  <span className="text-slate-300">Engineering & Projects (Naveen / Keerthi)</span>
-                                  <span className="font-bold text-white">{deptCounts["Engineering & Projects"]} visits</span>
-                                </div>
-                                <div className="flex justify-between p-2.5 bg-slate-800/40 rounded-lg">
-                                  <span className="text-slate-300">Frontdesk / Reception (Hariprasath)</span>
-                                  <span className="font-bold text-white">{deptCounts["Frontdesk / Reception"]} visits</span>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="bg-slate-900/50 p-5 rounded-xl border border-slate-800">
-                              <h4 className="text-sm font-bold text-white mb-4">Live Arrival Alerts</h4>
-                              <div className="space-y-2.5 text-xs max-h-56 overflow-y-auto">
+                              <h4 className="text-sm font-bold text-white mb-4">Live Arrivals Stream</h4>
+                              <div className="space-y-2.5 text-xs max-h-64 overflow-y-auto">
                                 {visitors.length === 0 ? (
-                                  <div className="text-slate-500 text-center py-6">No arrivals recorded yet.</div>
+                                  <div className="text-slate-500 text-center py-8">No arrivals logged yet.</div>
                                 ) : (
-                                  visitors.slice(0, 4).map(v => (
-                                    <div key={v.id} className="p-2.5 bg-slate-800/50 border border-slate-700/50 rounded-lg">
-                                      <div className="flex justify-between text-[10px] text-cyan-400 font-bold mb-1">
-                                        <span>NEW VISITOR ARRIVED</span>
-                                        <span className="text-slate-400">{v.checkIn}</span>
+                                  visitors.slice(0, 5).map(v => (
+                                    <div key={v.id} className="p-2.5 bg-slate-800/50 border border-slate-700/50 rounded-lg flex items-center gap-3">
+                                      <img src={v.photo} alt="Visitor" className="w-10 h-10 rounded-lg object-cover border border-slate-600 shrink-0" />
+                                      <div className="min-w-0 flex-1">
+                                        <div className="flex justify-between text-[10px] text-cyan-400 font-bold">
+                                          <span className="truncate">{v.name}</span>
+                                          <span className="text-slate-400 shrink-0">{v.checkIn}</span>
+                                        </div>
+                                        <div className="text-slate-300 text-[11px] truncate">Visiting: {v.host}</div>
+                                        <div className="text-slate-500 text-[10px] truncate">📍 {v.address || "Address Not Logged"}</div>
                                       </div>
-                                      <div className="text-slate-200 font-semibold">{v.name} ({v.company})</div>
-                                      <div className="text-slate-400 text-[11px]">Meeting: {v.host}</div>
                                     </div>
                                   ))
                                 )}
@@ -1144,18 +1281,181 @@
                         </div>
                       )}
 
+                      {/* TAB 2: INTERACTIVE CALENDAR VIEW WITH EMBEDDED EXPORTS */}
+                      {activeTab === 'calendar' && (
+                        <div className="space-y-6">
+                          <div className="flex justify-between items-center flex-wrap gap-4">
+                            <div>
+                              <h2 className="text-xl font-bold text-white">Monthly Footfall Calendar Heatmap</h2>
+                              <p className="text-xs text-slate-400">Numerical footfall counts displayed inside each day cell</p>
+                            </div>
+                            
+                            <div className="flex items-center gap-3">
+                              {/* Month Navigators */}
+                              <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-xl p-1 text-xs">
+                                <button 
+                                  onClick={() => setSelectedCalDate(new Date(year, month - 1, 1))} 
+                                  className="px-2.5 py-1 text-slate-300 hover:text-white"
+                                >
+                                  ◀
+                                </button>
+                                <span className="px-3 font-bold text-white">{monthNames[month]} {year}</span>
+                                <button 
+                                  onClick={() => setSelectedCalDate(new Date(year, month + 1, 1))} 
+                                  className="px-2.5 py-1 text-slate-300 hover:text-white"
+                                >
+                                  ▶
+                                </button>
+                              </div>
+
+                              {/* Calendar Exports */}
+                              <button 
+                                onClick={() => {
+                                  const currentMonthStr = `${year}-${String(month + 1).padStart(2, '0')}`;
+                                  const monthDataset = visitors.filter(v => v.dateString && v.dateString.startsWith(currentMonthStr));
+                                  exportToExcelWithImages(monthDataset.length ? monthDataset : visitors, `VISTA_${monthNames[month]}_${year}_Log`);
+                                }}
+                                className="px-3 py-1.5 bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 rounded-xl text-xs font-bold hover:bg-emerald-600/30 transition"
+                              >
+                                Month Excel (+Pics)
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  const currentMonthStr = `${year}-${String(month + 1).padStart(2, '0')}`;
+                                  const monthDataset = visitors.filter(v => v.dateString && v.dateString.startsWith(currentMonthStr));
+                                  exportToPDFWithImages(monthDataset.length ? monthDataset : visitors, `VISTA_${monthNames[month]}_${year}_Log`);
+                                }}
+                                className="px-3 py-1.5 bg-indigo-600/20 text-indigo-400 border border-indigo-600/30 rounded-xl text-xs font-bold hover:bg-indigo-600/30 transition"
+                              >
+                                Month PDF (+Pics)
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Calendar Grid */}
+                          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 overflow-hidden">
+                            <div className="grid grid-cols-7 gap-2 text-center text-xs font-bold text-slate-400 pb-3 border-b border-slate-800">
+                              <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+                            </div>
+                            <div className="grid grid-cols-7 gap-2 pt-2">
+                              {/* Empty padding days */}
+                              {Array.from({ length: firstDayOfMonth }).map((_, i) => (
+                                <div key={`empty-${i}`} className="calendar-cell bg-slate-950/30 rounded-xl border border-slate-800/30"></div>
+                              ))}
+
+                              {/* Days of the month */}
+                              {Array.from({ length: daysInMonth }).map((_, i) => {
+                                const day = i + 1;
+                                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                                const dayVisits = getVisitorsForDay(day);
+                                const count = dayVisits.length;
+                                const isSelected = calFilterDate === dateStr;
+
+                                return (
+                                  <div 
+                                    key={day} 
+                                    onClick={() => setCalFilterDate(isSelected ? null : dateStr)}
+                                    className={`calendar-cell p-2.5 rounded-xl border cursor-pointer flex flex-col justify-between ${isSelected ? 'bg-cyan-950/60 border-cyan-500 shadow-md shadow-cyan-500/20' : count > 0 ? 'bg-slate-900/90 border-slate-700' : 'bg-slate-950/60 border-slate-800/60'}`}
+                                  >
+                                    <div className="flex justify-between items-center text-xs">
+                                      <span className={`font-semibold ${count > 0 ? 'text-white' : 'text-slate-500'}`}>{day}</span>
+                                      {count > 0 && <span className="w-2 h-2 rounded-full bg-cyan-400"></span>}
+                                    </div>
+                                    <div className="mt-1">
+                                      <div className={`text-xl font-extrabold ${count > 0 ? 'text-cyan-400' : 'text-slate-600'}`}>
+                                        {count}
+                                      </div>
+                                      <div className="text-[10px] text-slate-400">visitors</div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Specific Day Drilldown Table */}
+                          {calFilterDate && (
+                            <div className="bg-slate-900/80 p-5 rounded-2xl border border-cyan-500/40 space-y-4">
+                              <div className="flex justify-between items-center flex-wrap gap-3">
+                                <div>
+                                  <h3 className="text-base font-bold text-white">Visitors on {calFilterDate}</h3>
+                                  <p className="text-xs text-slate-400">Detailed logs for this selected date</p>
+                                </div>
+                                <div className="flex gap-2">
+                                  <button 
+                                    onClick={() => exportToExcelWithImages(selectedDayVisitors, `VISTA_Day_${calFilterDate}`)}
+                                    className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition"
+                                  >
+                                    Export Day Excel (+Pics)
+                                  </button>
+                                  <button 
+                                    onClick={() => exportToPDFWithImages(selectedDayVisitors, `VISTA_Day_${calFilterDate}`)}
+                                    className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition"
+                                  >
+                                    Export Day PDF (+Pics)
+                                  </button>
+                                  <button 
+                                    onClick={() => setCalFilterDate(null)}
+                                    className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs"
+                                  >
+                                    Close Drilldown
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="overflow-x-auto rounded-xl border border-slate-800">
+                                <table className="w-full text-left text-xs">
+                                  <thead className="bg-slate-950 text-slate-400 uppercase border-b border-slate-800">
+                                    <tr>
+                                      <th className="p-3">Photo</th>
+                                      <th className="p-3">Badge ID</th>
+                                      <th className="p-3">Visitor Name</th>
+                                      <th className="p-3">Address</th>
+                                      <th className="p-3">Company</th>
+                                      <th className="p-3">Host</th>
+                                      <th className="p-3">Check-In</th>
+                                      <th className="p-3">Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-800">
+                                    {selectedDayVisitors.length === 0 ? (
+                                      <tr><td colSpan="8" className="p-4 text-center text-slate-500">No visitors on this date.</td></tr>
+                                    ) : (
+                                      selectedDayVisitors.map(v => (
+                                        <tr key={v.id}>
+                                          <td className="p-3"><img src={v.photo} alt="Visitor" className="w-9 h-9 rounded-lg object-cover border border-slate-700" /></td>
+                                          <td className="p-3 font-mono font-bold text-cyan-400">{v.id}</td>
+                                          <td className="p-3 font-bold text-white">{v.name}</td>
+                                          <td className="p-3 text-slate-400 max-w-[180px] truncate">{v.address || "-"}</td>
+                                          <td className="p-3 text-slate-400">{v.company}</td>
+                                          <td className="p-3 text-slate-300">{v.host}</td>
+                                          <td className="p-3 text-slate-400">{v.checkIn}</td>
+                                          <td className="p-3"><span className="text-emerald-400 font-bold">{v.status}</span></td>
+                                        </tr>
+                                      ))
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          )}
+
+                        </div>
+                      )}
+
+                      {/* TAB 3: ALL VISITORS MASTER REGISTER */}
                       {activeTab === 'visitors' && (
                         <div>
                           <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
                             <div>
                               <h3 className="text-lg font-bold text-white">Master Visitor Register</h3>
-                              <p className="text-xs text-slate-400">Complete audit log with captured visitor snapshots</p>
+                              <p className="text-xs text-slate-400">Complete audit log with captured pictures and physical addresses</p>
                             </div>
                             <div className="flex gap-2">
-                              <button onClick={exportToExcelWithImages} className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition">
+                              <button onClick={() => exportToExcelWithImages(visitors, "VISTA_Master_Register")} className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition">
                                 Export Excel (+Pics)
                               </button>
-                              <button onClick={exportToPDFWithImages} className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition">
+                              <button onClick={() => exportToPDFWithImages(visitors, "VISTA_Master_Register")} className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition">
                                 Export PDF (+Pics)
                               </button>
                             </div>
@@ -1168,6 +1468,7 @@
                                   <th className="p-3">Photo</th>
                                   <th className="p-3">Badge ID</th>
                                   <th className="p-3">Visitor Name</th>
+                                  <th className="p-3">Address</th>
                                   <th className="p-3">Company</th>
                                   <th className="p-3">Host Personnel</th>
                                   <th className="p-3">Logistics</th>
@@ -1180,20 +1481,17 @@
                               <tbody className="divide-y divide-slate-800 bg-slate-900/40">
                                 {visitors.length === 0 ? (
                                   <tr>
-                                    <td colSpan="10" className="p-6 text-center text-slate-500">No visitor records found. New mobile registrations automatically appear here in real-time.</td>
+                                    <td colSpan="11" className="p-6 text-center text-slate-500">No visitor records found. New mobile registrations automatically appear here in real-time.</td>
                                   </tr>
                                 ) : (
                                   visitors.map(vis => (
                                     <tr key={vis.id} className="hover:bg-slate-800/40">
                                       <td className="p-3">
-                                        {vis.photo ? (
-                                          <img src={vis.photo} alt="Visitor" className="w-9 h-9 rounded-lg object-cover border border-slate-700 shadow-sm" />
-                                        ) : (
-                                          <div className="w-9 h-9 rounded-lg bg-slate-800 flex items-center justify-center font-bold text-slate-500 text-[10px]">VIS</div>
-                                        )}
+                                        <img src={vis.photo} alt="Visitor" className="w-9 h-9 rounded-lg object-cover border border-slate-700 shadow-sm" />
                                       </td>
                                       <td className="p-3 font-mono text-cyan-400 font-bold">{vis.id}</td>
                                       <td className="p-3 font-bold text-white">{vis.name}</td>
+                                      <td className="p-3 text-slate-400 max-w-[180px] truncate" title={vis.address}>{vis.address || "-"}</td>
                                       <td className="p-3 text-slate-400">{vis.company}</td>
                                       <td className="p-3 text-slate-300">{vis.host}</td>
                                       <td className="p-3 text-slate-400">{vis.logistics}</td>
@@ -1223,12 +1521,13 @@
                         </div>
                       )}
 
+                      {/* TAB 4: CURRENTLY INSIDE */}
                       {activeTab === 'inside' && (
                         <div>
                           <div className="flex justify-between items-center mb-4">
                             <div>
                               <h3 className="text-lg font-bold text-white">Guests Currently Inside Campus</h3>
-                              <p className="text-xs text-slate-400">Real-time head-count for safety and clearance</p>
+                              <p className="text-xs text-slate-400">Real-time head-count for emergency safety and gate clearance</p>
                             </div>
                             <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-bold">
                               {activeInsideCount} Active Guests
@@ -1242,9 +1541,9 @@
                                   <th className="p-3">Photo</th>
                                   <th className="p-3">Badge ID</th>
                                   <th className="p-3">Visitor Name</th>
+                                  <th className="p-3">Address</th>
                                   <th className="p-3">Host Personnel</th>
                                   <th className="p-3">Purpose</th>
-                                  <th className="p-3">Logistics</th>
                                   <th className="p-3">Check-In</th>
                                   <th className="p-3">Action</th>
                                 </tr>
@@ -1258,17 +1557,13 @@
                                   visitors.filter(v => v.status === 'Inside').map(vis => (
                                     <tr key={vis.id} className="hover:bg-slate-800/40">
                                       <td className="p-3">
-                                        {vis.photo ? (
-                                          <img src={vis.photo} alt="Visitor" className="w-9 h-9 rounded-lg object-cover border border-slate-700" />
-                                        ) : (
-                                          <div className="w-9 h-9 rounded-lg bg-slate-800 flex items-center justify-center font-bold text-slate-500 text-[10px]">VIS</div>
-                                        )}
+                                        <img src={vis.photo} alt="Visitor" className="w-9 h-9 rounded-lg object-cover border border-slate-700" />
                                       </td>
                                       <td className="p-3 font-mono text-cyan-400 font-bold">{vis.id}</td>
                                       <td className="p-3 font-bold text-white">{vis.name}</td>
+                                      <td className="p-3 text-slate-400 max-w-[180px] truncate">{vis.address || "-"}</td>
                                       <td className="p-3 text-slate-300">{vis.host}</td>
                                       <td className="p-3 text-slate-400">{vis.purpose}</td>
-                                      <td className="p-3 text-slate-400">{vis.logistics}</td>
                                       <td className="p-3 text-slate-400">{vis.checkIn}</td>
                                       <td className="p-3">
                                         <button 
@@ -1287,6 +1582,7 @@
                         </div>
                       )}
 
+                      {/* TAB 5: GATE QR SCANNER */}
                       {activeTab === 'scanner' && (
                         <div className="max-w-md mx-auto text-center py-6">
                           <h3 className="text-lg font-bold text-white mb-1">Gate Camera QR Scanner</h3>
@@ -1320,6 +1616,7 @@
                         </div>
                       )}
 
+                      {/* TAB 6: HOST MASTER */}
                       {activeTab === 'employees' && (
                         <div>
                           <div className="flex justify-between items-center mb-4">
@@ -1363,6 +1660,7 @@
                         </div>
                       )}
 
+                      {/* TAB 7: STORAGE & OUTAGES */}
                       {activeTab === 'storage' && (
                         <div className="space-y-6">
                           <div>
@@ -1377,9 +1675,9 @@
                               <p className="text-[10px] text-slate-500 mt-1">Text-based visitor logs & host tables</p>
                             </div>
                             <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-800">
-                              <div className="text-xs text-slate-400 uppercase font-semibold">Compressed Photos (WebP/JPEG)</div>
+                              <div className="text-xs text-slate-400 uppercase font-semibold">Compressed Photos</div>
                               <div className="text-xl font-bold text-cyan-400 mt-1">{(effectiveStorageMB - rawStorageMB).toFixed(1)} MB</div>
-                              <p className="text-[10px] text-slate-500 mt-1">Optimized client-side badge photos</p>
+                              <p className="text-[10px] text-slate-500 mt-1">Client-side badge photos</p>
                             </div>
                             <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-800">
                               <div className="text-xs text-slate-400 uppercase font-semibold">Storage Utilization</div>
@@ -1387,31 +1685,6 @@
                                 {storagePct}% ({effectiveStorageMB} / {TOTAL_QUOTA_MB} MB)
                               </div>
                               <p className="text-[10px] text-slate-500 mt-1">Amber alert at 75%, Outage banner at 90%</p>
-                            </div>
-                          </div>
-
-                          <div className="bg-slate-900/80 p-5 rounded-xl border border-slate-800">
-                            <h4 className="text-sm font-bold text-white mb-2">Interactive Outage & Alert Simulator</h4>
-                            <p className="text-xs text-slate-400 mb-4">Simulate storage thresholds to verify alerts and exports.</p>
-                            <div className="flex gap-3 flex-wrap">
-                              <button 
-                                onClick={() => setSimulatedUsageMB(0)}
-                                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold"
-                              >
-                                Reset Live Actual Usage
-                              </button>
-                              <button 
-                                onClick={() => setSimulatedUsageMB(3900.0)}
-                                className="px-3 py-2 bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30 rounded-lg text-xs font-semibold"
-                              >
-                                Simulate Warning State (3,900 MB / 76%)
-                              </button>
-                              <button 
-                                onClick={() => setSimulatedUsageMB(4800.0)}
-                                className="px-3 py-2 bg-rose-500/20 text-rose-400 border border-rose-500/30 hover:bg-rose-500/30 rounded-lg text-xs font-semibold"
-                              >
-                                Simulate Outage State (4,800 MB / 94%)
-                              </button>
                             </div>
                           </div>
 
