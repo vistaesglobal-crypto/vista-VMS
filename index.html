@@ -8,7 +8,6 @@
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -17,18 +16,41 @@
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
-    body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #050811; color: #f8fafc; overflow-x: hidden; }
-    .glass-card { background: rgba(10, 16, 30, 0.78); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.08); }
-    .glass-sidebar { background: rgba(8, 13, 26, 0.88); backdrop-filter: blur(20px); border-right: 1px solid rgba(255, 255, 255, 0.08); }
+    body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #040813; color: #f8fafc; overflow-x: hidden; }
+    .glass-card { background: rgba(9, 14, 28, 0.82); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); }
+    .glass-sidebar { background: rgba(6, 10, 22, 0.92); backdrop-filter: blur(24px); border-right: 1px solid rgba(255, 255, 255, 0.08); }
     .vista-logo-frame { aspect-ratio: 16 / 10; display: inline-flex; align-items: center; justify-content: center; background: #ffffff; padding: 6px 12px; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.3); }
     .calendar-cell { min-height: 80px; transition: all 0.2s ease; }
     .calendar-cell:hover { background: rgba(30, 41, 59, 0.7); }
-    #bg-canvas-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; pointer-events: none; opacity: 0.8; }
+    #water-canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; pointer-events: none; opacity: 0.9; }
+    
+    /* Robot Dancing & Speaking Keyframes */
+    @keyframes robotBob {
+      0%, 100% { transform: translateY(0px) rotate(0deg); }
+      25% { transform: translateY(-8px) rotate(-3deg); }
+      75% { transform: translateY(-4px) rotate(3deg); }
+    }
+    @keyframes armWaveLeft {
+      0%, 100% { transform: rotate(-20deg); }
+      50% { transform: rotate(-55deg) translateY(-4px); }
+    }
+    @keyframes armWaveRight {
+      0%, 100% { transform: rotate(20deg); }
+      50% { transform: rotate(55deg) translateY(-4px); }
+    }
+    @keyframes voicePulse {
+      0%, 100% { height: 4px; opacity: 0.4; }
+      50% { height: 18px; opacity: 1; }
+    }
+    .robot-body-anim { animation: robotBob 3.5s ease-in-out infinite; }
+    .robot-left-arm { animation: armWaveLeft 2s ease-in-out infinite; transform-origin: 26px 58px; }
+    .robot-right-arm { animation: armWaveRight 2s ease-in-out infinite; transform-origin: 94px 58px; }
   </style>
 </head>
 <body class="min-h-screen text-slate-100 antialiased selection:bg-cyan-500 selection:text-white relative">
   
-  <div id="bg-canvas-container"></div>
+  <!-- Interactive Water Ripple Canvas -->
+  <canvas id="water-canvas"></canvas>
   <div id="root" class="relative z-10 min-h-screen flex flex-col"></div>
 
   <script type="text/babel">
@@ -52,7 +74,6 @@
       }).format(date);
     };
 
-    // Dynamic IST Greeting Engine
     const getISTGreeting = () => {
       const now = new Date();
       const istHour = parseInt(
@@ -64,144 +85,171 @@
       return { text: "Good Evening", icon: "🌙" };
     };
 
-    // Interactive 3D WebGL Fluid Water Ripple Background
-    const ThreeFluidBackground = () => {
+    // Realistic Water Touch Ripple Physics Engine
+    const WaterTouchCanvas = () => {
       useEffect(() => {
-        if (!window.THREE) return;
-        const container = document.getElementById('bg-canvas-container');
-        if (!container) return;
-        container.innerHTML = '';
+        const canvas = document.getElementById('water-canvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
 
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 0, 30);
+        let width = (canvas.width = window.innerWidth);
+        let height = (canvas.height = window.innerHeight);
 
-        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-        container.appendChild(renderer.domElement);
+        const ripples = [];
 
-        // Fluid Mesh Simulation Plane
-        const planeGeo = new THREE.PlaneGeometry(65, 45, 48, 48);
-        const planeMat = new THREE.MeshStandardMaterial({
-          color: 0x07152f,
-          emissive: 0x030a17,
-          roughness: 0.15,
-          metalness: 0.85,
-          wireframe: true,
-          transparent: true,
-          opacity: 0.4
-        });
-        const mesh = new THREE.Mesh(planeGeo, planeMat);
-        scene.add(mesh);
+        class Ripple {
+          constructor(x, y) {
+            this.x = x;
+            this.y = y;
+            this.radius = 2;
+            this.maxRadius = Math.random() * 80 + 100;
+            this.opacity = 0.85;
+            this.speed = 2.4;
+          }
+          draw() {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2, false);
+            ctx.strokeStyle = `rgba(56, 189, 248, ${this.opacity * 0.45})`;
+            ctx.lineWidth = 2.5;
+            ctx.shadowBlur = 12;
+            ctx.shadowColor = 'rgba(6, 182, 212, 0.7)';
+            ctx.stroke();
 
-        // Floating geometric particles
-        const particleGeo = new THREE.BufferGeometry();
-        const pCount = 200;
-        const pCoords = new Float32Array(pCount * 3);
-        for (let i = 0; i < pCount * 3; i += 3) {
-          pCoords[i] = (Math.random() - 0.5) * 60;
-          pCoords[i + 1] = (Math.random() - 0.5) * 40;
-          pCoords[i + 2] = (Math.random() - 0.5) * 20;
+            // Inner reverberation ring
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, Math.max(0, this.radius - 18), 0, Math.PI * 2, false);
+            ctx.strokeStyle = `rgba(168, 85, 247, ${this.opacity * 0.3})`;
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ctx.restore();
+          }
+          update() {
+            this.radius += this.speed;
+            this.opacity = 1 - (this.radius / this.maxRadius);
+          }
         }
-        particleGeo.setAttribute('position', new THREE.BufferAttribute(pCoords, 3));
-        const particleMat = new THREE.PointsMaterial({ color: 0x38bdf8, size: 0.25, transparent: true, opacity: 0.7 });
-        const particles = new THREE.Points(particleGeo, particleMat);
-        scene.add(particles);
 
-        // Dynamic Lighting Rig
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
-        scene.add(ambientLight);
-
-        const cyanSpot = new THREE.PointLight(0x06b6d4, 2, 80);
-        cyanSpot.position.set(15, 15, 15);
-        scene.add(cyanSpot);
-
-        const violetSpot = new THREE.PointLight(0xa855f7, 2, 80);
-        violetSpot.position.set(-15, -15, 15);
-        scene.add(violetSpot);
-
-        let mouseX = 0, mouseY = 0, targetX = 0, targetY = 0;
-        const onPointerMove = (e) => {
-          const x = e.clientX ?? (e.touches ? e.touches[0].clientX : 0);
-          const y = e.clientY ?? (e.touches ? e.touches[0].clientY : 0);
-          targetX = (x / window.innerWidth - 0.5) * 2;
-          targetY = -(y / window.innerHeight - 0.5) * 2;
+        const addRipple = (x, y) => {
+          if (ripples.length > 40) ripples.shift();
+          ripples.push(new Ripple(x, y));
         };
 
-        window.addEventListener('mousemove', onPointerMove, { passive: true });
-        window.addEventListener('touchmove', onPointerMove, { passive: true });
+        const onPointer = (e) => {
+          const x = e.clientX ?? (e.touches ? e.touches[0].clientX : 0);
+          const y = e.clientY ?? (e.touches ? e.touches[0].clientY : 0);
+          addRipple(x, y);
+        };
+
+        window.addEventListener('mousemove', onPointer, { passive: true });
+        window.addEventListener('touchmove', onPointer, { passive: true });
+        window.addEventListener('click', onPointer, { passive: true });
 
         const onResize = () => {
-          camera.aspect = window.innerWidth / window.innerHeight;
-          camera.updateProjectionMatrix();
-          renderer.setSize(window.innerWidth, window.innerHeight);
+          width = canvas.width = window.innerWidth;
+          height = canvas.height = window.innerHeight;
         };
         window.addEventListener('resize', onResize);
 
-        let clock = new THREE.Clock();
         let animId;
         const animate = () => {
           animId = requestAnimationFrame(animate);
-          const time = clock.getElapsedTime();
+          ctx.clearRect(0, 0, width, height);
 
-          mouseX += (targetX - mouseX) * 0.05;
-          mouseY += (targetY - mouseY) * 0.05;
+          // Subtle water shimmer gradient background
+          const grad = ctx.createRadialGradient(width / 2, height / 2, 50, width / 2, height / 2, width * 0.7);
+          grad.addColorStop(0, 'rgba(8, 20, 48, 0.35)');
+          grad.addColorStop(1, 'rgba(4, 8, 19, 0.7)');
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, width, height);
 
-          // Water ripple vertex displacement
-          const pos = planeGeo.attributes.position;
-          for (let i = 0; i < pos.count; i++) {
-            const u = pos.getX(i);
-            const v = pos.getY(i);
-            const dist = Math.sqrt((u - mouseX * 20) ** 2 + (v - mouseY * 20) ** 2);
-            const z = Math.sin(dist * 0.8 - time * 3) * 0.7 * Math.exp(-dist * 0.08);
-            pos.setZ(i, z);
+          for (let i = ripples.length - 1; i >= 0; i--) {
+            ripples[i].update();
+            ripples[i].draw();
+            if (ripples[i].opacity <= 0 || ripples[i].radius >= ripples[i].maxRadius) {
+              ripples.splice(i, 1);
+            }
           }
-          pos.needsUpdate = true;
-
-          mesh.rotation.z = Math.sin(time * 0.1) * 0.05;
-          particles.rotation.y = time * 0.03;
-          cyanSpot.position.x = Math.sin(time * 0.8) * 20;
-          violetSpot.position.y = Math.cos(time * 0.8) * 15;
-
-          renderer.render(scene, camera);
         };
         animate();
 
         return () => {
           cancelAnimationFrame(animId);
-          window.removeEventListener('mousemove', onPointerMove);
-          window.removeEventListener('touchmove', onPointerMove);
+          window.removeEventListener('mousemove', onPointer);
+          window.removeEventListener('touchmove', onPointer);
+          window.removeEventListener('click', onPointer);
           window.removeEventListener('resize', onResize);
-          if (container) container.innerHTML = '';
         };
       }, []);
 
       return null;
     };
 
-    // Vector Animated Robot Welcoming Mascot Component
-    const RobotMascot = () => (
-      <div className="relative w-24 h-24 mx-auto mb-2 flex items-center justify-center">
-        <div className="absolute inset-0 bg-cyan-500/20 rounded-full blur-xl animate-pulse" />
-        <svg viewBox="0 0 120 120" className="w-full h-full relative z-10 transition-transform duration-700 hover:scale-105">
-          <line x1="60" y1="22" x2="60" y2="8" stroke="#0ea5e9" strokeWidth="4" strokeLinecap="round" />
-          <circle cx="60" cy="7" r="5" fill="#38bdf8" className="animate-ping" style={{ transformOrigin: '60px 7px' }} />
-          <circle cx="60" cy="7" r="4" fill="#38bdf8" />
-          <rect x="28" y="22" width="64" height="48" rx="16" fill="#1e293b" stroke="#38bdf8" strokeWidth="3" />
-          <rect x="36" y="32" width="48" height="24" rx="8" fill="#0f172a" />
-          <circle cx="48" cy="44" r="5" fill="#06b6d4">
-            <animate attributeName="r" values="5;5;1;5" times="0;0.9;0.95;1" dur="4s" repeatCount="indefinite" />
-          </circle>
-          <circle cx="72" cy="44" r="5" fill="#06b6d4">
-            <animate attributeName="r" values="5;5;1;5" times="0;0.9;0.95;1" dur="4s" repeatCount="indefinite" />
-          </circle>
-          <path d="M42 74 C42 74 60 84 78 74 C84 86 78 98 60 98 C42 98 36 86 42 74 Z" fill="#0ea5e9" />
-          <ellipse cx="24" cy="62" rx="5" ry="9" fill="#38bdf8" transform="rotate(-25 24 62)" />
-          <ellipse cx="96" cy="62" rx="5" ry="9" fill="#38bdf8" transform="rotate(25 96 62)" />
-        </svg>
-      </div>
-    );
+    // Animated, Dancing & Talking 3D Robot Greeter
+    const DancingTalkingRobot = () => {
+      const greeting = useMemo(() => getISTGreeting(), []);
+      return (
+        <div className="flex flex-col items-center justify-center mb-4">
+          <div className="relative w-32 h-32 flex items-center justify-center">
+            {/* Hologram Aura Floor */}
+            <div className="absolute -bottom-2 w-28 h-6 bg-cyan-500/25 rounded-full blur-md animate-pulse" />
+
+            <svg viewBox="0 0 120 120" className="w-full h-full relative z-10 robot-body-anim drop-shadow-[0_10px_20px_rgba(6,182,212,0.4)]">
+              {/* Antenna */}
+              <line x1="60" y1="20" x2="60" y2="6" stroke="#0ea5e9" strokeWidth="3.5" strokeLinecap="round" />
+              <circle cx="60" cy="5" r="5" fill="#38bdf8" className="animate-ping" style={{ transformOrigin: '60px 5px' }} />
+              <circle cx="60" cy="5" r="4" fill="#06b6d4" />
+
+              {/* Arms waving in dance */}
+              <g className="robot-left-arm">
+                <rect x="18" y="52" width="12" height="22" rx="6" fill="#0284c7" stroke="#38bdf8" strokeWidth="2" />
+                <circle cx="24" cy="76" r="5" fill="#38bdf8" />
+              </g>
+              <g className="robot-right-arm">
+                <rect x="90" y="52" width="12" height="22" rx="6" fill="#0284c7" stroke="#38bdf8" strokeWidth="2" />
+                <circle cx="96" cy="76" r="5" fill="#38bdf8" />
+              </g>
+
+              {/* Head Base */}
+              <rect x="28" y="20" width="64" height="46" rx="16" fill="#1e293b" stroke="#38bdf8" strokeWidth="3" />
+              {/* Ear speakers */}
+              <rect x="23" y="32" width="6" height="20" rx="3" fill="#0ea5e9" />
+              <rect x="91" y="32" width="6" height="20" rx="3" fill="#0ea5e9" />
+
+              {/* Visor Screen */}
+              <rect x="36" y="28" width="48" height="26" rx="8" fill="#090d16" stroke="#0ea5e9" strokeWidth="1.5" />
+              
+              {/* Interactive Eyes */}
+              <circle cx="48" cy="40" r="5" fill="#38bdf8">
+                <animate attributeName="r" values="5;5;1;5" times="0;0.9;0.95;1" dur="3.5s" repeatCount="indefinite" />
+              </circle>
+              <circle cx="72" cy="40" r="5" fill="#38bdf8">
+                <animate attributeName="r" values="5;5;1;5" times="0;0.9;0.95;1" dur="3.5s" repeatCount="indefinite" />
+              </circle>
+
+              {/* Talking Mouth / Audio Waveform */}
+              <g transform="translate(48, 48)">
+                <line x1="0" y1="0" x2="0" y2="4" stroke="#06b6d4" strokeWidth="2" strokeLinecap="round" style={{ animation: 'voicePulse 0.6s infinite ease-in-out' }} />
+                <line x1="6" y1="0" x2="6" y2="7" stroke="#06b6d4" strokeWidth="2" strokeLinecap="round" style={{ animation: 'voicePulse 0.4s infinite ease-in-out 0.1s' }} />
+                <line x1="12" y1="0" x2="12" y2="8" stroke="#38bdf8" strokeWidth="2" strokeLinecap="round" style={{ animation: 'voicePulse 0.5s infinite ease-in-out 0.2s' }} />
+                <line x1="18" y1="0" x2="18" y2="6" stroke="#06b6d4" strokeWidth="2" strokeLinecap="round" style={{ animation: 'voicePulse 0.7s infinite ease-in-out 0.15s' }} />
+                <line x1="24" y1="0" x2="24" y2="3" stroke="#06b6d4" strokeWidth="2" strokeLinecap="round" style={{ animation: 'voicePulse 0.4s infinite ease-in-out 0.25s' }} />
+              </g>
+
+              {/* Lower Body */}
+              <path d="M42 70 C42 70 60 80 78 70 C84 82 78 94 60 94 C42 94 36 82 42 70 Z" fill="#0284c7" stroke="#38bdf8" strokeWidth="2" />
+              <circle cx="60" cy="82" r="4" fill="#38bdf8" />
+            </svg>
+          </div>
+
+          {/* Interactive Speech Bubble */}
+          <div className="mt-1 px-4 py-1.5 bg-slate-900/90 border border-cyan-500/40 rounded-full text-xs font-bold text-cyan-300 shadow-lg flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+            <span>"{greeting.text}! Ready to assist your check-in."</span>
+          </div>
+        </div>
+      );
+    };
 
     const VistaLogo = ({ className = "h-9" }) => (
       <div className={`vista-logo-frame ${className}`}>
@@ -269,7 +317,7 @@
       </div>
     );
 
-    const INITIAL_EMPLOYEES = [
+    const INITIAL_HOSTS = [
       { id: "VES-0101", name: "Magesh Kumar S", dept: "Indian Operations", role: "Head - Operations", access: "Management / Host", status: "Active" },
       { id: "VES-0102", name: "Mohan D", dept: "Operations", role: "Operations Lead", access: "Management / Host", status: "Active" },
       { id: "VES-0103", name: "Hariprasath", dept: "Frontdesk / Reception", role: "Frontdesk / Reception", access: "Frontdesk / Reception", status: "Active" },
@@ -279,11 +327,11 @@
       { id: "VES-0107", name: "Keerthivasan D", dept: "Engineering & Projects", role: "Project Manager", access: "Host", status: "Active" }
     ];
 
-    const STORAGE_KEY = "VISTA_VMS_DATABASE_PROD_V8";
-    const SESSION_KEY = "VISTA_VMS_SESSION_PROD_V8";
-    const HOSTS_KEY = "VISTA_VMS_HOSTS_PROD_V8";
-    const CREDENTIALS_KEY = "VISTA_VMS_AUTH_CREDENTIALS_V8";
-    const SYNC_TOPIC = "vista/vms/live_sync_stream_v8";
+    const STORAGE_KEY = "VISTA_VMS_DATABASE_PROD_V9";
+    const SESSION_KEY = "VISTA_VMS_SESSION_PROD_V9";
+    const HOSTS_STORAGE_KEY = "VISTA_VMS_HOSTS_PERSISTENT_V1";
+    const CREDENTIALS_KEY = "VISTA_VMS_CREDENTIALS_V9";
+    const SYNC_TOPIC = "vista/vms/live_sync_v9";
     const TOTAL_QUOTA_MB = 5120; // 5 GB
 
     function App() {
@@ -291,7 +339,6 @@
       const isVisitorParam = queryParams.get('mode') === 'visitor';
       const isStaffParam = queryParams.get('portal') === 'staff';
 
-      // Authentication State
       const [currentUser, setCurrentUser] = useState(() => {
         try {
           const s = localStorage.getItem(SESSION_KEY);
@@ -299,18 +346,11 @@
         } catch (e) { return null; }
       });
 
-      // Role Credentials Store (Allows Super User Password Reset Override)
       const [credentials, setCredentials] = useState(() => {
         try {
           const c = localStorage.getItem(CREDENTIALS_KEY);
-          return c ? JSON.parse(c) : {
-            superuser: 'vista@super',
-            admin: 'vista@admin',
-            frontdesk: 'vista@gate'
-          };
-        } catch (e) {
-          return { superuser: 'vista@super', admin: 'vista@admin', frontdesk: 'vista@gate' };
-        }
+          return c ? JSON.parse(c) : { superuser: 'vista@super', admin: 'vista@admin', frontdesk: 'vista@gate' };
+        } catch (e) { return { superuser: 'vista@super', admin: 'vista@admin', frontdesk: 'vista@gate' }; }
       });
 
       useEffect(() => {
@@ -324,7 +364,6 @@
       const [loginPass, setLoginPass] = useState('');
       const [loginError, setLoginError] = useState('');
 
-      // Public visitor registration state
       const [step, setStep] = useState(1);
       const [formData, setFormData] = useState({
         fullName: '', phone: '', address: '',
@@ -337,19 +376,25 @@
       const [photoError, setPhotoError] = useState('');
       const [registeredBadge, setRegisteredBadge] = useState(null);
 
-      // Hosts
+      // Persistent Host Master Storage (survives logout & reload)
       const [employees, setEmployees] = useState(() => {
         try {
-          const saved = localStorage.getItem(HOSTS_KEY);
-          return saved ? JSON.parse(saved) : INITIAL_EMPLOYEES;
-        } catch (e) { return INITIAL_EMPLOYEES; }
+          const saved = localStorage.getItem(HOSTS_STORAGE_KEY);
+          return saved ? JSON.parse(saved) : INITIAL_HOSTS;
+        } catch (e) { return INITIAL_HOSTS; }
       });
+
+      useEffect(() => {
+        localStorage.setItem(HOSTS_STORAGE_KEY, JSON.stringify(employees));
+      }, [employees]);
 
       const [editingHostId, setEditingHostId] = useState(null);
       const [editHostForm, setEditHostForm] = useState({ dept: '', role: '', access: '' });
+      const [addHostModalOpen, setAddHostModalOpen] = useState(false);
+      const [newHostForm, setNewHostForm] = useState({ name: '', dept: '', role: '', access: 'Host' });
       const [hostDeleteConfirm, setHostDeleteConfirm] = useState(null);
 
-      // Super User Password Reset Modal State
+      // Super User Password Reset
       const [passwordResetModal, setPasswordResetModal] = useState(false);
       const [targetResetUser, setTargetResetUser] = useState('admin');
       const [newCustomPass, setNewCustomPass] = useState('');
@@ -362,6 +407,10 @@
           return s ? JSON.parse(s) : [];
         } catch (e) { return []; }
       });
+
+      useEffect(() => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(visitors));
+      }, [visitors]);
 
       // Modals
       const [selectedVisitorModal, setSelectedVisitorModal] = useState(null);
@@ -380,14 +429,10 @@
       const mqttClientRef = useRef(null);
       const broadcastChannelRef = useRef(null);
 
-      useEffect(() => {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(visitors));
-      }, [visitors]);
-
-      // Optimized Sync Protocol with Dual WebSocket Broker
+      // WebSocket Multi-Cast Sync Protocol
       useEffect(() => {
         if ('BroadcastChannel' in window) {
-          const channel = new BroadcastChannel('vista_vms_sync_v8');
+          const channel = new BroadcastChannel('vista_sync_v9');
           broadcastChannelRef.current = channel;
           channel.onmessage = (event) => {
             if (event.data?.action === 'NEW_VISITOR') {
@@ -431,7 +476,7 @@
                 } else if (payload.action === 'WIPE_ALL') {
                   setVisitors([]);
                 }
-              } catch (err) { console.error("Sync error", err); }
+              } catch (err) { console.error("Sync parse error", err); }
             }
           });
         }
@@ -466,7 +511,7 @@
         }
       };
 
-      // Lightweight 160x160 JPEG Compression (~8KB) for Instant Multi-Device Sync
+      // Resized to 160x160 JPEG (~8KB)
       const capturePhoto = () => {
         if (!videoRef.current || !canvasRef.current) return;
         const video = videoRef.current;
@@ -525,17 +570,16 @@
         setLoginPass('');
       };
 
-      // Super User Password Reset Override Execution
       const executePasswordResetOverride = (e) => {
         e.preventDefault();
         if (!newCustomPass.trim()) return;
         setCredentials(prev => ({ ...prev, [targetResetUser]: newCustomPass.trim() }));
-        setResetSuccessMsg(`Password successfully updated for '${targetResetUser}'.`);
+        setResetSuccessMsg(`Password updated for '${targetResetUser}'.`);
         setTimeout(() => {
           setPasswordResetModal(false);
           setResetSuccessMsg('');
           setNewCustomPass('');
-        }, 2000);
+        }, 1800);
       };
 
       const handleVisitorSubmit = (e) => {
@@ -550,7 +594,7 @@
 
         const nextSequence = visitors.length + 1;
         const formattedId = `VIS-${String(nextSequence).padStart(4, '0')}`;
-        const hostObj = employees.find(emp => emp.id === formData.hostId) || employees[2] || INITIAL_EMPLOYEES[2];
+        const hostObj = employees.find(emp => emp.id === formData.hostId) || employees[2] || INITIAL_HOSTS[2];
         const now = new Date();
 
         const newBadge = {
@@ -598,6 +642,38 @@
         setVisitors(visitors.map(v => v.id === id ? { ...v, status: 'Checked Out', checkOut: timeNow } : v));
       };
 
+      const handleAddHostSubmit = (e) => {
+        e.preventDefault();
+        if (!newHostForm.name.trim()) return;
+        const nextIdNum = employees.length + 101;
+        const newHost = {
+          id: `VES-${String(nextIdNum).padStart(4, '0')}`,
+          name: newHostForm.name.trim(),
+          dept: newHostForm.dept.trim() || 'General Operations',
+          role: newHostForm.role.trim() || 'Staff / Host',
+          access: newHostForm.access,
+          status: 'Active'
+        };
+        setEmployees([...employees, newHost]);
+        setAddHostModalOpen(false);
+        setNewHostForm({ name: '', dept: '', role: '', access: 'Host' });
+      };
+
+      const startEditingHost = (emp) => {
+        setEditingHostId(emp.id);
+        setEditHostForm({ dept: emp.dept, role: emp.role, access: emp.access });
+      };
+
+      const saveHostEdit = (id) => {
+        setEmployees(employees.map(emp => emp.id === id ? { ...emp, ...editHostForm } : emp));
+        setEditingHostId(null);
+      };
+
+      const deleteHost = (id) => {
+        setEmployees(employees.filter(emp => emp.id !== id));
+        setHostDeleteConfirm(null);
+      };
+
       const executeHardDelete = () => {
         setVisitors([]);
         if (broadcastChannelRef.current) broadcastChannelRef.current.postMessage({ action: 'WIPE_ALL' });
@@ -605,17 +681,16 @@
         setHardDeleteConfirmOpen(false);
       };
 
-      // Two-Phase Verified Export & Purge Media Safeguard
+      // Two-Phase Verified Purge
       const handleExecuteExportAndPurge = async () => {
         try {
           setPurgeProcessingStep('EXPORTING');
           if (selectedExportFormat === 'XLSX') {
-            await exportToExcelWithImages(visitors, "VISTA_Verified_Archive_Before_Purge");
+            await exportToExcelWithImages(visitors, "VISTA_Archive_Before_Purge");
           } else {
-            exportToPDFWithImages(visitors, "VISTA_Verified_Archive_Before_Purge");
+            exportToPDFWithImages(visitors, "VISTA_Archive_Before_Purge");
           }
 
-          // Execute purge only after file stream generation and client trigger
           setPurgeProcessingStep('PURGING');
           const purged = visitors.map(v => ({ ...v, photo: '' }));
           setVisitors(purged);
@@ -629,7 +704,7 @@
             setPurgeProcessingStep('IDLE');
           }, 1800);
         } catch (err) {
-          alert("Export verification failed. Purge canceled to prevent data loss.");
+          alert("Export could not be completed. Purge canceled.");
           setPurgeProcessingStep('IDLE');
         }
       };
@@ -797,7 +872,6 @@
         return visitors;
       }, [visitors, analyticsRange, todayISO, oneWeekAgo, oneMonthAgo]);
 
-      // Top Visited Personnel
       const hostTrafficMap = {};
       employees.forEach(emp => { hostTrafficMap[emp.name] = []; });
       filteredList.forEach(v => {
@@ -806,7 +880,6 @@
       });
       const topHosts = Object.entries(hostTrafficMap).sort((a, b) => b[1].length - a[1].length);
 
-      // Hourly Distribution
       const hourlyDistribution = { 
         "Morning (8-11 AM)": filteredList.filter(v => { const h = v.checkInHour ?? 10; return h >= 8 && h < 11; }),
         "Noon (11-2 PM)": filteredList.filter(v => { const h = v.checkInHour ?? 12; return h >= 11 && h < 14; }),
@@ -814,7 +887,6 @@
         "Evening (5-8 PM)": filteredList.filter(v => { const h = v.checkInHour ?? 18; return h >= 17; })
       };
 
-      // Logistics Distribution
       const walkVisitors = filteredList.filter(v => v.logistics === 'Come by Walk');
       const vehicleVisitors = filteredList.filter(v => v.logistics !== 'Come by Walk');
       const walkCount = walkVisitors.length;
@@ -822,7 +894,6 @@
       const walkPct = filteredList.length ? Math.round((walkCount / filteredList.length) * 100) : 0;
       const vehiclePct = filteredList.length ? (100 - walkPct) : 0;
 
-      // Calendar Navigation Helpers
       const year = selectedCalDate.getFullYear();
       const month = selectedCalDate.getMonth();
       const firstDayOfMonth = new Date(year, month, 1).getDay();
@@ -836,11 +907,10 @@
 
       const selectedDayVisitors = calFilterDate ? visitors.filter(v => v.dateString === calFilterDate) : [];
       const canManageHosts = currentUser && (currentUser.level === 'super' || currentUser.level === 'admin');
-      const greeting = useMemo(() => getISTGreeting(), []);
 
       return (
         <div className="min-h-screen flex flex-col">
-          <ThreeFluidBackground />
+          <WaterTouchCanvas />
 
           {/* Navigation Bar */}
           {!isVisitorParam && (
@@ -899,14 +969,14 @@
 
                   {step === 1 && (
                     <div className="text-center">
-                      <RobotMascot />
+                      <DancingTalkingRobot />
                       <div className="inline-block px-3 py-1 rounded-full bg-cyan-950/60 border border-cyan-500/30 text-cyan-400 text-xs font-semibold mb-2">
                         {formatToIST(new Date(), false)} • Strict IST Timezone
                       </div>
                       <h2 className="text-2xl font-bold text-white mb-1">
-                        {greeting.text} {greeting.icon}
+                        Welcome to VISTA Campus
                       </h2>
-                      <p className="text-sm text-slate-400 mb-6">Welcome to VISTA Campus. Please complete self check-in registration.</p>
+                      <p className="text-sm text-slate-400 mb-6">Please complete self check-in registration to generate your digital pass.</p>
                       
                       <div className="grid grid-cols-2 gap-4 mb-6">
                         <div className="bg-slate-900/80 p-4 rounded-xl border border-slate-800">
@@ -928,7 +998,7 @@
                     </div>
                   )}
 
-                  {/* Step 1: Contact, Address, Type of Person ("Other" Option with Custom Dialog) */}
+                  {/* Step 1: Contact & Identity */}
                   {step === 2 && (
                     <form onSubmit={(e) => { e.preventDefault(); setStep(3); }}>
                       <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
@@ -1121,7 +1191,7 @@
                         )}
 
                         <div>
-                          <label className="block text-xs font-semibold text-slate-300 mb-1">Carried Electronic Devices (Laptop / Tools / Hard Disks)</label>
+                          <label className="block text-xs font-semibold text-slate-300 mb-1">Carried Electronic Devices (Laptop / Tools / External Drives)</label>
                           <input 
                             type="text" 
                             value={formData.assetDetails} 
@@ -1619,12 +1689,19 @@
                                     onClick={() => setSelectedVisitorModal(v)}
                                     className="p-3 bg-slate-900/90 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/50 rounded-xl flex items-center gap-3 cursor-pointer transition shadow"
                                   >
-                                    <img 
-                                      src={v.photo} 
-                                      alt="Visitor" 
-                                      onClick={(e) => { e.stopPropagation(); setPreviewImageModal(v.photo); }}
-                                      className="w-12 h-12 rounded-xl object-cover border border-slate-700 shrink-0 hover:scale-105 transition" 
-                                    />
+                                    {v.photo ? (
+                                      <img 
+                                        src={v.photo} 
+                                        alt="Visitor" 
+                                        onClick={(e) => { e.stopPropagation(); setPreviewImageModal(v.photo); }}
+                                        className="w-12 h-12 rounded-xl object-cover border border-slate-700 shrink-0 hover:scale-105 transition" 
+                                      />
+                                    ) : (
+                                      <div className="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex flex-col items-center justify-center text-[9px] text-slate-400 shrink-0">
+                                        <span>📁</span>
+                                        <span>Archived</span>
+                                      </div>
+                                    )}
                                     <div className="min-w-0 flex-1 text-xs">
                                       <div className="flex justify-between text-[11px] font-bold">
                                         <span className="text-white truncate">{v.name}</span>
@@ -1778,7 +1855,13 @@
                                     ) : (
                                       selectedDayVisitors.map(v => (
                                         <tr key={v.id} onClick={() => setSelectedVisitorModal(v)} className="hover:bg-slate-800/60 cursor-pointer">
-                                          <td className="p-3"><img src={v.photo} alt="Visitor" className="w-9 h-9 rounded-lg object-cover border border-slate-700" /></td>
+                                          <td className="p-3">
+                                            {v.photo ? (
+                                              <img src={v.photo} alt="Visitor" className="w-9 h-9 rounded-lg object-cover border border-slate-700" />
+                                            ) : (
+                                              <div className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-[8px] text-slate-400">Archived</div>
+                                            )}
+                                          </td>
                                           <td className="p-3 font-mono font-bold text-cyan-400">{v.id}</td>
                                           <td className="p-3 font-bold text-white">{v.name}</td>
                                           <td className="p-3 text-cyan-300">{v.personType || "-"}</td>
@@ -1846,12 +1929,19 @@
                                       className="hover:bg-slate-800/60 cursor-pointer transition"
                                     >
                                       <td className="p-3">
-                                        <img 
-                                          src={vis.photo} 
-                                          alt="Visitor" 
-                                          onClick={(e) => { e.stopPropagation(); setPreviewImageModal(vis.photo); }}
-                                          className="w-9 h-9 rounded-lg object-cover border border-slate-700 shadow-sm hover:scale-105 transition" 
-                                        />
+                                        {vis.photo ? (
+                                          <img 
+                                            src={vis.photo} 
+                                            alt="Visitor" 
+                                            onClick={(e) => { e.stopPropagation(); setPreviewImageModal(vis.photo); }}
+                                            className="w-9 h-9 rounded-lg object-cover border border-slate-700 shadow-sm hover:scale-105 transition" 
+                                          />
+                                        ) : (
+                                          <div className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 flex flex-col items-center justify-center text-[7px] text-slate-400">
+                                            <span>📁</span>
+                                            <span>Archived</span>
+                                          </div>
+                                        )}
                                       </td>
                                       <td className="p-3 font-mono text-cyan-400 font-bold">{vis.id}</td>
                                       <td className="p-3 font-bold text-white">{vis.name}</td>
@@ -1926,12 +2016,19 @@
                                       className="hover:bg-slate-800/60 cursor-pointer"
                                     >
                                       <td className="p-3">
-                                        <img 
-                                          src={vis.photo} 
-                                          alt="Visitor" 
-                                          onClick={(e) => { e.stopPropagation(); setPreviewImageModal(vis.photo); }}
-                                          className="w-9 h-9 rounded-lg object-cover border border-slate-700 hover:scale-105 transition" 
-                                        />
+                                        {vis.photo ? (
+                                          <img 
+                                            src={vis.photo} 
+                                            alt="Visitor" 
+                                            onClick={(e) => { e.stopPropagation(); setPreviewImageModal(vis.photo); }}
+                                            className="w-9 h-9 rounded-lg object-cover border border-slate-700 hover:scale-105 transition" 
+                                          />
+                                        ) : (
+                                          <div className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 flex flex-col items-center justify-center text-[7px] text-slate-400">
+                                            <span>📁</span>
+                                            <span>Archived</span>
+                                          </div>
+                                        )}
                                       </td>
                                       <td className="p-3 font-mono text-cyan-400 font-bold">{vis.id}</td>
                                       <td className="p-3 font-bold text-white">{vis.name}</td>
@@ -1991,19 +2088,29 @@
                         </div>
                       )}
 
-                      {/* TAB 6: HOST MASTER */}
+                      {/* TAB 6: HOST MASTER WITH IN-PAGE EDIT, ADD NEW HOST & TRASH */}
                       {activeTab === 'employees' && (
                         <div>
                           <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
                             <div>
                               <h3 className="text-lg font-bold text-white">Host Personnel Master Directory</h3>
                               <p className="text-xs text-slate-400">
-                                {canManageHosts ? "Super User & Admin Mode: In-page roles, department editing, and deletion enabled." : "Strictly filtered: Zero contact phones or emails exposed."}
+                                {canManageHosts ? "Super User & Admin: In-page roles, department editing, additions, and deletions are saved to permanent storage." : "Strictly filtered directory."}
                               </p>
                             </div>
-                            <span className="px-3 py-1 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-full text-xs font-semibold">
-                              {employees.length} Authorized Hosts
-                            </span>
+                            <div className="flex items-center gap-2">
+                              {canManageHosts && (
+                                <button
+                                  onClick={() => setAddHostModalOpen(true)}
+                                  className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-cyan-900/30 transition flex items-center gap-1.5"
+                                >
+                                  <span>+</span> Add New Host Personnel
+                                </button>
+                              )}
+                              <span className="px-3 py-1.5 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-xl text-xs font-semibold">
+                                {employees.length} Authorized Hosts
+                              </span>
+                            </div>
                           </div>
 
                           <div className="overflow-x-auto rounded-xl border border-slate-800">
@@ -2117,41 +2224,39 @@
                         </div>
                       )}
 
-                      {/* TAB 7: STORAGE & RETENTION (TWO-PHASE PURGE + DELETE WITHOUT BACKUP) */}
+                      {/* TAB 7: STORAGE & OUTAGES */}
                       {activeTab === 'storage' && (
                         <div className="space-y-6">
                           <div>
-                            <h3 className="text-lg font-bold text-white">Cloud Storage & Data Retention Lifecycle</h3>
-                            <p className="text-xs text-slate-400">Total System Allocation: 5,120 MB (5 GB Tier) with Dedicated Audit Trail Reservation.</p>
+                            <h3 className="text-lg font-bold text-white">Cloud Storage & Quota Management</h3>
+                            <p className="text-xs text-slate-400">Configured with 5,120 MB (5 GB) storage tier to accommodate long-term photo logging.</p>
                           </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-800">
-                              <div className="text-xs text-slate-400 uppercase font-semibold">Total Database Footprint</div>
+                              <div className="text-xs text-slate-400 uppercase font-semibold">Database JSON Footprint</div>
                               <div className="text-xl font-bold text-white mt-1">{rawStorageMB} MB</div>
-                              <p className="text-[10px] text-slate-500 mt-1">Audit logs & visitor metadata intact</p>
+                              <p className="text-[10px] text-slate-500 mt-1">Text-based visitor logs & host tables</p>
                             </div>
                             <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-800">
-                              <div className="text-xs text-slate-400 uppercase font-semibold">Allocated Quota</div>
+                              <div className="text-xs text-slate-400 uppercase font-semibold">Allocated System Quota</div>
                               <div className="text-xl font-bold text-cyan-400 mt-1">{TOTAL_QUOTA_MB} MB (5 GB)</div>
-                              <p className="text-[10px] text-slate-500 mt-1">512 MB reserved for audit safety</p>
+                              <p className="text-[10px] text-slate-500 mt-1">Audit log headroom preserved</p>
                             </div>
                             <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-800">
                               <div className="text-xs text-slate-400 uppercase font-semibold">Storage Utilization</div>
                               <div className="text-xl font-bold mt-1 text-emerald-400">
                                 {storagePct}% ({rawStorageMB} / {TOTAL_QUOTA_MB} MB)
                               </div>
-                              <p className="text-[10px] text-slate-500 mt-1">Amber threshold at 75%, Critical at 90%</p>
+                              <p className="text-[10px] text-slate-500 mt-1">Amber alert at 75%, Outage banner at 90%</p>
                             </div>
                           </div>
 
                           {/* Data Maintenance Controls */}
                           <div className="bg-slate-900/80 p-5 rounded-xl border border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                             <div>
-                              <h4 className="text-sm font-bold text-white">Export & Deletion Management</h4>
-                              <p className="text-xs text-slate-400">
-                                Clear media only after verified export download, or execute a restricted full system purge.
-                              </p>
+                              <h4 className="text-sm font-bold text-white">Data Maintenance & Purge Controls</h4>
+                              <p className="text-xs text-slate-400">Choose between verified media archival purge or complete database wipe.</p>
                             </div>
                             <div className="flex gap-3">
                               <button 
@@ -2190,13 +2295,20 @@
                 </button>
                 
                 <div className="flex items-center gap-4 border-b border-slate-800 pb-4 mb-4">
-                  <img 
-                    src={selectedVisitorModal.photo} 
-                    alt="Visitor Snapshot" 
-                    onClick={() => setPreviewImageModal(selectedVisitorModal.photo)}
-                    title="Click to view full photo"
-                    className="w-16 h-16 rounded-xl object-cover border border-slate-600 shadow-md cursor-pointer hover:ring-2 hover:ring-cyan-400" 
-                  />
+                  {selectedVisitorModal.photo ? (
+                    <img 
+                      src={selectedVisitorModal.photo} 
+                      alt="Visitor Snapshot" 
+                      onClick={() => setPreviewImageModal(selectedVisitorModal.photo)}
+                      title="Click to view full photo"
+                      className="w-16 h-16 rounded-xl object-cover border border-slate-600 shadow-md cursor-pointer hover:ring-2 hover:ring-cyan-400" 
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded-xl bg-slate-800 border border-slate-700 flex flex-col items-center justify-center text-xs text-slate-400">
+                      <span>📁</span>
+                      <span className="text-[10px]">Archived</span>
+                    </div>
+                  )}
                   <div>
                     <div className="text-xs font-mono font-bold text-cyan-400">{selectedVisitorModal.id}</div>
                     <h3 className="text-lg font-extrabold text-white">{selectedVisitorModal.name}</h3>
@@ -2310,7 +2422,13 @@
                             onClick={() => setSelectedVisitorModal(v)}
                             className="hover:bg-slate-800/80 cursor-pointer transition"
                           >
-                            <td className="p-3"><img src={v.photo} alt="Visitor" className="w-8 h-8 rounded-lg object-cover border border-slate-700" /></td>
+                            <td className="p-3">
+                              {v.photo ? (
+                                <img src={v.photo} alt="Visitor" className="w-8 h-8 rounded-lg object-cover border border-slate-700" />
+                              ) : (
+                                <div className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-[7px] text-slate-400">Archived</div>
+                              )}
+                            </td>
                             <td className="p-3 font-mono font-bold text-cyan-400">{v.id}</td>
                             <td className="p-3 font-bold text-white">{v.name}</td>
                             <td className="p-3 text-cyan-300">{v.personType}</td>
@@ -2336,7 +2454,83 @@
             </div>
           )}
 
-          {/* 4. TWO-PHASE EXPORT & PURGE MODAL */}
+          {/* 4. MODAL: ADD NEW HOST PERSONNEL */}
+          {addHostModalOpen && (
+            <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[75] flex items-center justify-center p-4">
+              <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+                <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                  <h3 className="text-base font-bold text-white">Add New Host Personnel</h3>
+                  <button onClick={() => setAddHostModalOpen(false)} className="text-slate-400 hover:text-white">✕</button>
+                </div>
+
+                <form onSubmit={handleAddHostSubmit} className="space-y-3 text-xs">
+                  <div>
+                    <label className="block text-slate-400 mb-1">Full Name *</label>
+                    <input
+                      type="text" required
+                      value={newHostForm.name}
+                      onChange={(e) => setNewHostForm({ ...newHostForm, name: e.target.value })}
+                      placeholder="e.g. Ramesh S"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1">Department / Unit *</label>
+                    <input
+                      type="text" required
+                      value={newHostForm.dept}
+                      onChange={(e) => setNewHostForm({ ...newHostForm, dept: e.target.value })}
+                      placeholder="e.g. Quality Assurance / Operations"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1">Designation / Responsibility *</label>
+                    <input
+                      type="text" required
+                      value={newHostForm.role}
+                      onChange={(e) => setNewHostForm({ ...newHostForm, role: e.target.value })}
+                      placeholder="e.g. QA Manager / Lead Engineer"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1">System Access Role *</label>
+                    <select
+                      value={newHostForm.access}
+                      onChange={(e) => setNewHostForm({ ...newHostForm, access: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white"
+                    >
+                      <option value="Host">Host</option>
+                      <option value="Management / Host">Management / Host</option>
+                      <option value="Frontdesk / Reception">Frontdesk / Reception</option>
+                    </select>
+                  </div>
+
+                  <div className="flex gap-2 pt-3">
+                    <button
+                      type="button"
+                      onClick={() => setAddHostModalOpen(false)}
+                      className="w-1/2 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold text-xs"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="w-1/2 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-bold text-xs shadow-lg shadow-cyan-900/30"
+                    >
+                      Save Personnel
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* 5. TWO-PHASE EXPORT & PURGE MODAL */}
           {exportPurgeModalOpen && (
             <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[75] flex items-center justify-center p-4">
               <div className="glass-card max-w-md w-full p-6 rounded-2xl border-slate-700 shadow-2xl space-y-4">
@@ -2387,7 +2581,7 @@
             </div>
           )}
 
-          {/* 5. HARD RESET WITHOUT BACKUP CONFIRMATION MODAL */}
+          {/* 6. HARD RESET CONFIRMATION MODAL */}
           {hardDeleteConfirmOpen && (
             <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[75] flex items-center justify-center p-4">
               <div className="bg-slate-900 border border-rose-500/50 rounded-2xl max-w-md w-full p-6 text-center shadow-2xl">
@@ -2416,7 +2610,7 @@
             </div>
           )}
 
-          {/* 6. SUPER USER PASSWORD RESET MODAL */}
+          {/* 7. SUPER USER PASSWORD RESET MODAL */}
           {passwordResetModal && (
             <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[75] flex items-center justify-center p-4">
               <div className="bg-slate-900 border border-indigo-500/50 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
@@ -2476,7 +2670,7 @@
             </div>
           )}
 
-          {/* 7. HOST DELETE CONFIRMATION MODAL */}
+          {/* 8. HOST DELETE CONFIRMATION MODAL */}
           {hostDeleteConfirm && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[75] flex items-center justify-center p-4">
               <div className="bg-slate-900 border border-rose-500/40 rounded-2xl max-w-sm w-full p-6 text-center shadow-2xl">
