@@ -23,7 +23,7 @@
     .vista-logo-frame { aspect-ratio: 16 / 10; display: inline-flex; align-items: center; justify-content: center; background: #ffffff; padding: 6px 12px; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.3); }
     .calendar-cell { min-height: 80px; transition: all 0.2s ease; }
     .calendar-cell:hover { background: rgba(30, 41, 59, 0.7); }
-    #bg-canvas-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; pointer-events: none; opacity: 0.75; }
+    #bg-canvas-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; pointer-events: none; opacity: 0.8; }
   </style>
 </head>
 <body class="min-h-screen text-slate-100 antialiased selection:bg-cyan-500 selection:text-white relative">
@@ -32,123 +32,176 @@
   <div id="root" class="relative z-10 min-h-screen flex flex-col"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
+    const { useState, useEffect, useRef, useMemo } = React;
 
-    // Interactive Three.js 3D Background Component
-    const ThreeBackground = () => {
+    // Strict IST Timezone Formatter Utility (UTC+05:30)
+    const formatToIST = (dateInput, includeTime = true) => {
+      if (!dateInput) return 'N/A';
+      const date = typeof dateInput === 'string' || typeof dateInput === 'number' ? new Date(dateInput) : dateInput;
+      if (isNaN(date.getTime())) return 'Invalid Date';
+
+      return new Intl.DateTimeFormat('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: includeTime ? '2-digit' : undefined,
+        minute: includeTime ? '2-digit' : undefined,
+        second: includeTime ? '2-digit' : undefined,
+        hour12: true
+      }).format(date);
+    };
+
+    // Dynamic IST Greeting Engine
+    const getISTGreeting = () => {
+      const now = new Date();
+      const istHour = parseInt(
+        new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', hourCycle: 'h23' }).format(now),
+        10
+      );
+      if (istHour >= 4 && istHour < 12) return { text: "Good Morning", icon: "🌅" };
+      if (istHour >= 12 && istHour < 17) return { text: "Good Afternoon", icon: "☀️" };
+      return { text: "Good Evening", icon: "🌙" };
+    };
+
+    // Interactive 3D WebGL Fluid Water Ripple Background
+    const ThreeFluidBackground = () => {
       useEffect(() => {
         if (!window.THREE) return;
         const container = document.getElementById('bg-canvas-container');
         if (!container) return;
-
         container.innerHTML = '';
+
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.z = 25;
+        const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 0, 30);
 
         const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
         container.appendChild(renderer.domElement);
 
-        const group = new THREE.Group();
-        scene.add(group);
-
-        const geo = new THREE.IcosahedronGeometry(7, 1);
-        const wireMat = new THREE.MeshStandardMaterial({
-          color: 0x0ea5e9,
+        // Fluid Mesh Simulation Plane
+        const planeGeo = new THREE.PlaneGeometry(65, 45, 48, 48);
+        const planeMat = new THREE.MeshStandardMaterial({
+          color: 0x07152f,
+          emissive: 0x030a17,
+          roughness: 0.15,
+          metalness: 0.85,
           wireframe: true,
           transparent: true,
-          opacity: 0.35
+          opacity: 0.4
         });
-        const icosahedron = new THREE.Mesh(geo, wireMat);
-        group.add(icosahedron);
+        const mesh = new THREE.Mesh(planeGeo, planeMat);
+        scene.add(mesh);
 
-        const coreGeo = new THREE.SphereGeometry(3.5, 32, 32);
-        const coreMat = new THREE.MeshStandardMaterial({
-          color: 0x6366f1,
-          roughness: 0.3,
-          metalness: 0.8,
-          transparent: true,
-          opacity: 0.5
-        });
-        const core = new THREE.Mesh(coreGeo, coreMat);
-        group.add(core);
-
-        const partCount = 350;
-        const partGeo = new THREE.BufferGeometry();
-        const positions = new Float32Array(partCount * 3);
-
-        for (let i = 0; i < partCount * 3; i += 3) {
-          const radius = 12 + Math.random() * 8;
-          const theta = Math.random() * Math.PI * 2;
-          const phi = (Math.random() - 0.5) * Math.PI;
-
-          positions[i] = radius * Math.cos(theta) * Math.cos(phi);
-          positions[i + 1] = radius * Math.sin(phi);
-          positions[i + 2] = radius * Math.sin(theta) * Math.cos(phi);
+        // Floating geometric particles
+        const particleGeo = new THREE.BufferGeometry();
+        const pCount = 200;
+        const pCoords = new Float32Array(pCount * 3);
+        for (let i = 0; i < pCount * 3; i += 3) {
+          pCoords[i] = (Math.random() - 0.5) * 60;
+          pCoords[i + 1] = (Math.random() - 0.5) * 40;
+          pCoords[i + 2] = (Math.random() - 0.5) * 20;
         }
-        partGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
-        const partMat = new THREE.PointsMaterial({
-          color: 0x38bdf8,
-          size: 0.15,
-          transparent: true,
-          opacity: 0.6
-        });
-        const particles = new THREE.Points(partGeo, partMat);
+        particleGeo.setAttribute('position', new THREE.BufferAttribute(pCoords, 3));
+        const particleMat = new THREE.PointsMaterial({ color: 0x38bdf8, size: 0.25, transparent: true, opacity: 0.7 });
+        const particles = new THREE.Points(particleGeo, particleMat);
         scene.add(particles);
 
-        const ambient = new THREE.AmbientLight(0xffffff, 0.4);
-        scene.add(ambient);
+        // Dynamic Lighting Rig
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        scene.add(ambientLight);
 
-        const cyanLight = new THREE.DirectionalLight(0x06b6d4, 1.2);
-        cyanLight.position.set(20, 20, 20);
-        scene.add(cyanLight);
+        const cyanSpot = new THREE.PointLight(0x06b6d4, 2, 80);
+        cyanSpot.position.set(15, 15, 15);
+        scene.add(cyanSpot);
 
-        const violetLight = new THREE.DirectionalLight(0x8b5cf6, 1.2);
-        violetLight.position.set(-20, -20, 20);
-        scene.add(violetLight);
+        const violetSpot = new THREE.PointLight(0xa855f7, 2, 80);
+        violetSpot.position.set(-15, -15, 15);
+        scene.add(violetSpot);
 
-        let mouseX = 0;
-        let mouseY = 0;
-        const handleMouseMove = (e) => {
-          mouseX = (e.clientX / window.innerWidth - 0.5) * 2;
-          mouseY = -(e.clientY / window.innerHeight - 0.5) * 2;
+        let mouseX = 0, mouseY = 0, targetX = 0, targetY = 0;
+        const onPointerMove = (e) => {
+          const x = e.clientX ?? (e.touches ? e.touches[0].clientX : 0);
+          const y = e.clientY ?? (e.touches ? e.touches[0].clientY : 0);
+          targetX = (x / window.innerWidth - 0.5) * 2;
+          targetY = -(y / window.innerHeight - 0.5) * 2;
         };
-        window.addEventListener('mousemove', handleMouseMove);
 
-        const handleResize = () => {
+        window.addEventListener('mousemove', onPointerMove, { passive: true });
+        window.addEventListener('touchmove', onPointerMove, { passive: true });
+
+        const onResize = () => {
           camera.aspect = window.innerWidth / window.innerHeight;
           camera.updateProjectionMatrix();
           renderer.setSize(window.innerWidth, window.innerHeight);
         };
-        window.addEventListener('resize', handleResize);
+        window.addEventListener('resize', onResize);
 
-        let reqId;
+        let clock = new THREE.Clock();
+        let animId;
         const animate = () => {
-          reqId = requestAnimationFrame(animate);
-          group.rotation.x += 0.002;
-          group.rotation.y += 0.003;
-          particles.rotation.y -= 0.0008;
+          animId = requestAnimationFrame(animate);
+          const time = clock.getElapsedTime();
 
-          group.position.x += (mouseX * 4 - group.position.x) * 0.04;
-          group.position.y += (mouseY * 4 - group.position.y) * 0.04;
+          mouseX += (targetX - mouseX) * 0.05;
+          mouseY += (targetY - mouseY) * 0.05;
+
+          // Water ripple vertex displacement
+          const pos = planeGeo.attributes.position;
+          for (let i = 0; i < pos.count; i++) {
+            const u = pos.getX(i);
+            const v = pos.getY(i);
+            const dist = Math.sqrt((u - mouseX * 20) ** 2 + (v - mouseY * 20) ** 2);
+            const z = Math.sin(dist * 0.8 - time * 3) * 0.7 * Math.exp(-dist * 0.08);
+            pos.setZ(i, z);
+          }
+          pos.needsUpdate = true;
+
+          mesh.rotation.z = Math.sin(time * 0.1) * 0.05;
+          particles.rotation.y = time * 0.03;
+          cyanSpot.position.x = Math.sin(time * 0.8) * 20;
+          violetSpot.position.y = Math.cos(time * 0.8) * 15;
 
           renderer.render(scene, camera);
         };
         animate();
 
         return () => {
-          cancelAnimationFrame(reqId);
-          window.removeEventListener('mousemove', handleMouseMove);
-          window.removeEventListener('resize', handleResize);
+          cancelAnimationFrame(animId);
+          window.removeEventListener('mousemove', onPointerMove);
+          window.removeEventListener('touchmove', onPointerMove);
+          window.removeEventListener('resize', onResize);
           if (container) container.innerHTML = '';
         };
       }, []);
 
       return null;
     };
+
+    // Vector Animated Robot Welcoming Mascot Component
+    const RobotMascot = () => (
+      <div className="relative w-24 h-24 mx-auto mb-2 flex items-center justify-center">
+        <div className="absolute inset-0 bg-cyan-500/20 rounded-full blur-xl animate-pulse" />
+        <svg viewBox="0 0 120 120" className="w-full h-full relative z-10 transition-transform duration-700 hover:scale-105">
+          <line x1="60" y1="22" x2="60" y2="8" stroke="#0ea5e9" strokeWidth="4" strokeLinecap="round" />
+          <circle cx="60" cy="7" r="5" fill="#38bdf8" className="animate-ping" style={{ transformOrigin: '60px 7px' }} />
+          <circle cx="60" cy="7" r="4" fill="#38bdf8" />
+          <rect x="28" y="22" width="64" height="48" rx="16" fill="#1e293b" stroke="#38bdf8" strokeWidth="3" />
+          <rect x="36" y="32" width="48" height="24" rx="8" fill="#0f172a" />
+          <circle cx="48" cy="44" r="5" fill="#06b6d4">
+            <animate attributeName="r" values="5;5;1;5" times="0;0.9;0.95;1" dur="4s" repeatCount="indefinite" />
+          </circle>
+          <circle cx="72" cy="44" r="5" fill="#06b6d4">
+            <animate attributeName="r" values="5;5;1;5" times="0;0.9;0.95;1" dur="4s" repeatCount="indefinite" />
+          </circle>
+          <path d="M42 74 C42 74 60 84 78 74 C84 86 78 98 60 98 C42 98 36 86 42 74 Z" fill="#0ea5e9" />
+          <ellipse cx="24" cy="62" rx="5" ry="9" fill="#38bdf8" transform="rotate(-25 24 62)" />
+          <ellipse cx="96" cy="62" rx="5" ry="9" fill="#38bdf8" transform="rotate(25 96 62)" />
+        </svg>
+      </div>
+    );
 
     const VistaLogo = ({ className = "h-9" }) => (
       <div className={`vista-logo-frame ${className}`}>
@@ -226,25 +279,43 @@
       { id: "VES-0107", name: "Keerthivasan D", dept: "Engineering & Projects", role: "Project Manager", access: "Host", status: "Active" }
     ];
 
-    const STORAGE_KEY = "VISTA_VMS_DATABASE_PROD_V7";
-    const SESSION_KEY = "VISTA_VMS_SESSION_PROD_V7";
-    const HOSTS_KEY = "VISTA_VMS_HOSTS_PROD_V7";
-    const SYNC_TOPIC = "vista/vms/live_sync_stream_v7";
-    const TOTAL_QUOTA_MB = 5120;
+    const STORAGE_KEY = "VISTA_VMS_DATABASE_PROD_V8";
+    const SESSION_KEY = "VISTA_VMS_SESSION_PROD_V8";
+    const HOSTS_KEY = "VISTA_VMS_HOSTS_PROD_V8";
+    const CREDENTIALS_KEY = "VISTA_VMS_AUTH_CREDENTIALS_V8";
+    const SYNC_TOPIC = "vista/vms/live_sync_stream_v8";
+    const TOTAL_QUOTA_MB = 5120; // 5 GB
 
     function App() {
       const queryParams = new URLSearchParams(window.location.search);
       const isVisitorParam = queryParams.get('mode') === 'visitor';
       const isStaffParam = queryParams.get('portal') === 'staff';
 
+      // Authentication State
       const [currentUser, setCurrentUser] = useState(() => {
         try {
-          const saved = localStorage.getItem(SESSION_KEY);
-          return saved ? JSON.parse(saved) : null;
+          const s = localStorage.getItem(SESSION_KEY);
+          return s ? JSON.parse(s) : null;
+        } catch (e) { return null; }
+      });
+
+      // Role Credentials Store (Allows Super User Password Reset Override)
+      const [credentials, setCredentials] = useState(() => {
+        try {
+          const c = localStorage.getItem(CREDENTIALS_KEY);
+          return c ? JSON.parse(c) : {
+            superuser: 'vista@super',
+            admin: 'vista@admin',
+            frontdesk: 'vista@gate'
+          };
         } catch (e) {
-          return null;
+          return { superuser: 'vista@super', admin: 'vista@admin', frontdesk: 'vista@gate' };
         }
       });
+
+      useEffect(() => {
+        localStorage.setItem(CREDENTIALS_KEY, JSON.stringify(credentials));
+      }, [credentials]);
 
       const [view, setView] = useState(currentUser || isStaffParam ? 'staff' : 'visitor');
       const [activeTab, setActiveTab] = useState('dashboard');
@@ -253,60 +324,52 @@
       const [loginPass, setLoginPass] = useState('');
       const [loginError, setLoginError] = useState('');
 
+      // Public visitor registration state
       const [step, setStep] = useState(1);
       const [formData, setFormData] = useState({
-        fullName: '',
-        phone: '',
-        address: '',
-        personType: 'Fresher / Job Aspirant',
-        personTypeOther: '',
-        govtIdLast4: '',
-        hostId: 'VES-0103',
-        purpose: 'Interview / Recruitment Drive',
-        purposeOther: '',
-        comeByWalk: true,
-        vehicleNo: '',
-        assetDetails: '',
-        photo: ''
+        fullName: '', phone: '', address: '',
+        personType: 'Fresher / Job Aspirant', personTypeOther: '',
+        govtIdLast4: '', hostId: 'VES-0103',
+        purpose: 'Interview / Recruitment Drive', purposeOther: '',
+        comeByWalk: true, vehicleNo: '', assetDetails: '', photo: ''
       });
       const [cameraActive, setCameraActive] = useState(false);
       const [photoError, setPhotoError] = useState('');
       const [registeredBadge, setRegisteredBadge] = useState(null);
 
+      // Hosts
       const [employees, setEmployees] = useState(() => {
         try {
           const saved = localStorage.getItem(HOSTS_KEY);
           return saved ? JSON.parse(saved) : INITIAL_EMPLOYEES;
-        } catch (e) {
-          return INITIAL_EMPLOYEES;
-        }
+        } catch (e) { return INITIAL_EMPLOYEES; }
       });
 
       const [editingHostId, setEditingHostId] = useState(null);
       const [editHostForm, setEditHostForm] = useState({ dept: '', role: '', access: '' });
       const [hostDeleteConfirm, setHostDeleteConfirm] = useState(null);
 
-      useEffect(() => {
-        try {
-          localStorage.setItem(HOSTS_KEY, JSON.stringify(employees));
-        } catch (e) {
-          console.error("Host storage error", e);
-        }
-      }, [employees]);
+      // Super User Password Reset Modal State
+      const [passwordResetModal, setPasswordResetModal] = useState(false);
+      const [targetResetUser, setTargetResetUser] = useState('admin');
+      const [newCustomPass, setNewCustomPass] = useState('');
+      const [resetSuccessMsg, setResetSuccessMsg] = useState('');
 
+      // Visitors Database Store
       const [visitors, setVisitors] = useState(() => {
         try {
-          const saved = localStorage.getItem(STORAGE_KEY);
-          return saved ? JSON.parse(saved) : [];
-        } catch (e) {
-          return [];
-        }
+          const s = localStorage.getItem(STORAGE_KEY);
+          return s ? JSON.parse(s) : [];
+        } catch (e) { return []; }
       });
 
       // Modals
       const [selectedVisitorModal, setSelectedVisitorModal] = useState(null);
       const [previewImageModal, setPreviewImageModal] = useState(null);
       const [genericDrilldownModal, setGenericDrilldownModal] = useState(null);
+      const [exportPurgeModalOpen, setExportPurgeModalOpen] = useState(false);
+      const [selectedExportFormat, setSelectedExportFormat] = useState('XLSX');
+      const [purgeProcessingStep, setPurgeProcessingStep] = useState('IDLE');
       const [hardDeleteConfirmOpen, setHardDeleteConfirmOpen] = useState(false);
 
       const [selectedCalDate, setSelectedCalDate] = useState(new Date());
@@ -318,24 +381,22 @@
       const broadcastChannelRef = useRef(null);
 
       useEffect(() => {
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(visitors));
-        } catch (e) {
-          console.error("Storage error", e);
-        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(visitors));
       }, [visitors]);
 
       // Optimized Sync Protocol with Dual WebSocket Broker
       useEffect(() => {
         if ('BroadcastChannel' in window) {
-          const channel = new BroadcastChannel('vista_vms_sync_v7');
+          const channel = new BroadcastChannel('vista_vms_sync_v8');
           broadcastChannelRef.current = channel;
           channel.onmessage = (event) => {
-            if (event.data && event.data.action === 'NEW_VISITOR') {
+            if (event.data?.action === 'NEW_VISITOR') {
               setVisitors(prev => prev.some(v => v.id === event.data.data.id) ? prev : [event.data.data, ...prev]);
-            } else if (event.data && event.data.action === 'CHECKOUT') {
+            } else if (event.data?.action === 'CHECKOUT') {
               setVisitors(prev => prev.map(v => v.id === event.data.id ? { ...v, status: 'Checked Out', checkOut: event.data.time } : v));
-            } else if (event.data && event.data.action === 'WIPE_ALL') {
+            } else if (event.data?.action === 'MEDIA_PURGED') {
+              setVisitors(prev => prev.map(v => ({ ...v, photo: '' })));
+            } else if (event.data?.action === 'WIPE_ALL') {
               setVisitors([]);
             }
           };
@@ -350,12 +411,10 @@
           });
 
           mqttClientRef.current = client;
-
           client.on('connect', () => {
             setCloudConnected(true);
             client.subscribe(SYNC_TOPIC, { qos: 1 });
           });
-
           client.on('close', () => setCloudConnected(false));
           client.on('error', () => setCloudConnected(false));
 
@@ -367,12 +426,12 @@
                   setVisitors(prev => prev.some(v => v.id === payload.data.id) ? prev : [payload.data, ...prev]);
                 } else if (payload.action === 'CHECKOUT') {
                   setVisitors(prev => prev.map(v => v.id === payload.id ? { ...v, status: 'Checked Out', checkOut: payload.time } : v));
+                } else if (payload.action === 'MEDIA_PURGED') {
+                  setVisitors(prev => prev.map(v => ({ ...v, photo: '' })));
                 } else if (payload.action === 'WIPE_ALL') {
                   setVisitors([]);
                 }
-              } catch (err) {
-                console.error("Sync error", err);
-              }
+              } catch (err) { console.error("Sync error", err); }
             }
           });
         }
@@ -383,10 +442,8 @@
         };
       }, []);
 
-      const [simulatedUsageMB, setSimulatedUsageMB] = useState(0);
       const rawStorageMB = Number(((JSON.stringify(visitors).length * 2) / (1024 * 1024)).toFixed(2));
-      const effectiveStorageMB = simulatedUsageMB > 0 ? simulatedUsageMB : rawStorageMB;
-      const storagePct = Math.min(100, Math.round((effectiveStorageMB / TOTAL_QUOTA_MB) * 100));
+      const storagePct = Math.min(100, Math.round((rawStorageMB / TOTAL_QUOTA_MB) * 100));
 
       const [scannerActive, setScannerActive] = useState(false);
       const [scannerMessage, setScannerMessage] = useState('');
@@ -409,6 +466,7 @@
         }
       };
 
+      // Lightweight 160x160 JPEG Compression (~8KB) for Instant Multi-Device Sync
       const capturePhoto = () => {
         if (!videoRef.current || !canvasRef.current) return;
         const video = videoRef.current;
@@ -429,16 +487,12 @@
 
       const handlePhoneChange = (e) => {
         const val = e.target.value;
-        if (/^\d{0,10}$/.test(val)) {
-          setFormData({ ...formData, phone: val });
-        }
+        if (/^\d{0,10}$/.test(val)) setFormData({ ...formData, phone: val });
       };
 
       const handleGovtIdChange = (e) => {
         const val = e.target.value;
-        if (/^\d{0,4}$/.test(val)) {
-          setFormData({ ...formData, govtIdLast4: val });
-        }
+        if (/^\d{0,4}$/.test(val)) setFormData({ ...formData, govtIdLast4: val });
       };
 
       const handleLogin = (e) => {
@@ -447,20 +501,20 @@
         const id = loginId.trim().toLowerCase();
         const pass = loginPass.trim();
 
-        let userObj = null;
-        if (id === 'superuser' && pass === 'vista@super') {
-          userObj = { name: "Super User", role: "Super User / Executive Access", level: "super" };
-        } else if (id === 'admin' && pass === 'vista@admin') {
-          userObj = { name: "System Admin", role: "System Administrator", level: "admin" };
-        } else if (id === 'frontdesk' && pass === 'vista@gate') {
-          userObj = { name: "Front Desk Officer", role: "Front Desk & Security Operations", level: "frontdesk" };
-        }
-
-        if (userObj) {
-          setCurrentUser(userObj);
-          localStorage.setItem(SESSION_KEY, JSON.stringify(userObj));
+        if (id === 'superuser' && pass === credentials.superuser) {
+          const u = { name: "Super User", role: "Super User / Executive Access", level: "super" };
+          setCurrentUser(u);
+          localStorage.setItem(SESSION_KEY, JSON.stringify(u));
+        } else if (id === 'admin' && pass === credentials.admin) {
+          const u = { name: "System Admin", role: "System Administrator", level: "admin" };
+          setCurrentUser(u);
+          localStorage.setItem(SESSION_KEY, JSON.stringify(u));
+        } else if (id === 'frontdesk' && pass === credentials.frontdesk) {
+          const u = { name: "Front Desk Officer", role: "Front Desk & Security Operations", level: "frontdesk" };
+          setCurrentUser(u);
+          localStorage.setItem(SESSION_KEY, JSON.stringify(u));
         } else {
-          setLoginError('Invalid credentials. Access is restricted.');
+          setLoginError('Invalid credentials. Access restricted.');
         }
       };
 
@@ -471,21 +525,28 @@
         setLoginPass('');
       };
 
+      // Super User Password Reset Override Execution
+      const executePasswordResetOverride = (e) => {
+        e.preventDefault();
+        if (!newCustomPass.trim()) return;
+        setCredentials(prev => ({ ...prev, [targetResetUser]: newCustomPass.trim() }));
+        setResetSuccessMsg(`Password successfully updated for '${targetResetUser}'.`);
+        setTimeout(() => {
+          setPasswordResetModal(false);
+          setResetSuccessMsg('');
+          setNewCustomPass('');
+        }, 2000);
+      };
+
       const handleVisitorSubmit = (e) => {
         if (e) e.preventDefault();
-        
         if (!formData.photo) {
           setPhotoError("Live photo is strictly mandatory for security badge clearance.");
           return;
         }
 
-        const effectivePersonType = formData.personType === 'Other' 
-          ? (formData.personTypeOther.trim() || 'Other Guest') 
-          : formData.personType;
-
-        const effectivePurpose = formData.purpose === 'Other' 
-          ? (formData.purposeOther.trim() || 'General Visit') 
-          : formData.purpose;
+        const effectivePersonType = formData.personType === 'Other' ? (formData.personTypeOther.trim() || 'Other Guest') : formData.personType;
+        const effectivePurpose = formData.purpose === 'Other' ? (formData.purposeOther.trim() || 'General Visit') : formData.purpose;
 
         const nextSequence = visitors.length + 1;
         const formattedId = `VIS-${String(nextSequence).padStart(4, '0')}`;
@@ -508,7 +569,7 @@
           photo: formData.photo,
           status: "Inside",
           dateString: now.toISOString().slice(0, 10),
-          checkIn: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          checkIn: formatToIST(now),
           checkOut: "-",
           checkInHour: now.getHours(),
           timestamp: now.getTime()
@@ -517,62 +578,63 @@
         if (broadcastChannelRef.current) {
           broadcastChannelRef.current.postMessage({ action: 'NEW_VISITOR', data: newBadge });
         }
-
-        if (mqttClientRef.current && mqttClientRef.current.connected) {
-          mqttClientRef.current.publish(SYNC_TOPIC, JSON.stringify({
-            action: 'NEW_VISITOR',
-            data: newBadge
-          }), { qos: 1 });
+        if (mqttClientRef.current?.connected) {
+          mqttClientRef.current.publish(SYNC_TOPIC, JSON.stringify({ action: 'NEW_VISITOR', data: newBadge }), { qos: 1 });
         }
 
-        const updated = [newBadge, ...visitors];
-        setVisitors(updated);
+        setVisitors([newBadge, ...visitors]);
         setRegisteredBadge(newBadge);
         setStep(5);
       };
 
       const handleCheckOut = (id) => {
-        const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        
+        const timeNow = formatToIST(new Date());
         if (broadcastChannelRef.current) {
           broadcastChannelRef.current.postMessage({ action: 'CHECKOUT', id, time: timeNow });
         }
-
-        if (mqttClientRef.current && mqttClientRef.current.connected) {
+        if (mqttClientRef.current?.connected) {
           mqttClientRef.current.publish(SYNC_TOPIC, JSON.stringify({ action: 'CHECKOUT', id, time: timeNow }), { qos: 1 });
         }
-
-        const updated = visitors.map(v => v.id === id ? { ...v, status: 'Checked Out', checkOut: timeNow } : v);
-        setVisitors(updated);
-      };
-
-      const startEditingHost = (emp) => {
-        setEditingHostId(emp.id);
-        setEditHostForm({ dept: emp.dept, role: emp.role, access: emp.access });
-      };
-
-      const saveHostEdit = (id) => {
-        setEmployees(employees.map(emp => emp.id === id ? { ...emp, ...editHostForm } : emp));
-        setEditingHostId(null);
-      };
-
-      const deleteHost = (id) => {
-        setEmployees(employees.filter(emp => emp.id !== id));
-        setHostDeleteConfirm(null);
+        setVisitors(visitors.map(v => v.id === id ? { ...v, status: 'Checked Out', checkOut: timeNow } : v));
       };
 
       const executeHardDelete = () => {
         setVisitors([]);
-        setSimulatedUsageMB(0);
-        if (broadcastChannelRef.current) {
-          broadcastChannelRef.current.postMessage({ action: 'WIPE_ALL' });
-        }
-        if (mqttClientRef.current && mqttClientRef.current.connected) {
-          mqttClientRef.current.publish(SYNC_TOPIC, JSON.stringify({ action: 'WIPE_ALL' }), { qos: 1 });
-        }
+        if (broadcastChannelRef.current) broadcastChannelRef.current.postMessage({ action: 'WIPE_ALL' });
+        if (mqttClientRef.current?.connected) mqttClientRef.current.publish(SYNC_TOPIC, JSON.stringify({ action: 'WIPE_ALL' }), { qos: 1 });
         setHardDeleteConfirmOpen(false);
       };
 
+      // Two-Phase Verified Export & Purge Media Safeguard
+      const handleExecuteExportAndPurge = async () => {
+        try {
+          setPurgeProcessingStep('EXPORTING');
+          if (selectedExportFormat === 'XLSX') {
+            await exportToExcelWithImages(visitors, "VISTA_Verified_Archive_Before_Purge");
+          } else {
+            exportToPDFWithImages(visitors, "VISTA_Verified_Archive_Before_Purge");
+          }
+
+          // Execute purge only after file stream generation and client trigger
+          setPurgeProcessingStep('PURGING');
+          const purged = visitors.map(v => ({ ...v, photo: '' }));
+          setVisitors(purged);
+
+          if (broadcastChannelRef.current) broadcastChannelRef.current.postMessage({ action: 'MEDIA_PURGED' });
+          if (mqttClientRef.current?.connected) mqttClientRef.current.publish(SYNC_TOPIC, JSON.stringify({ action: 'MEDIA_PURGED' }), { qos: 1 });
+
+          setPurgeProcessingStep('COMPLETE');
+          setTimeout(() => {
+            setExportPurgeModalOpen(false);
+            setPurgeProcessingStep('IDLE');
+          }, 1800);
+        } catch (err) {
+          alert("Export verification failed. Purge canceled to prevent data loss.");
+          setPurgeProcessingStep('IDLE');
+        }
+      };
+
+      // QR Scanner Listener
       useEffect(() => {
         let html5QrCode = null;
         if (activeTab === 'scanner' && scannerActive && window.Html5Qrcode) {
@@ -592,22 +654,13 @@
                   } else {
                     setScannerMessage(`${found.name} (${badgeId}) is already Checked Out.`);
                   }
-                } else {
-                  setScannerMessage(`Badge ${badgeId} not found.`);
-                }
-              } else {
-                setScannerMessage("Invalid VISTA QR format.");
-              }
+                } else { setScannerMessage(`Badge ${badgeId} not found.`); }
+              } else { setScannerMessage("Invalid VISTA QR format."); }
             },
             () => {}
-          ).catch(err => {
-            console.error(err);
-            setScannerActive(false);
-          });
+          ).catch(err => { console.error(err); setScannerActive(false); });
         }
-        return () => {
-          if (html5QrCode) html5QrCode.stop().catch(() => {});
-        };
+        return () => { if (html5QrCode) html5QrCode.stop().catch(() => {}); };
       }, [activeTab, scannerActive, visitors]);
 
       useEffect(() => {
@@ -618,84 +671,63 @@
 
       useEffect(() => {
         if (standeeModalOpen && standeeQrRef.current && window.QRCode) {
-          const directVisitorUrl = window.location.origin + window.location.pathname + "?mode=visitor";
-          window.QRCode.toCanvas(standeeQrRef.current, directVisitorUrl, { width: 240, margin: 1 });
+          const directUrl = window.location.origin + window.location.pathname + "?mode=visitor";
+          window.QRCode.toCanvas(standeeQrRef.current, directUrl, { width: 240, margin: 1 });
         }
       }, [standeeModalOpen]);
 
+      // Excel Generator
       const exportToExcelWithImages = async (dataset = visitors, title = "VISTA_Visitor_Register") => {
-        if (!window.ExcelJS) {
-          alert("Excel engine loading, please try again in a moment.");
-          return;
-        }
-
+        if (!window.ExcelJS) return;
         const workbook = new window.ExcelJS.Workbook();
         workbook.creator = "VISTA Visitor Management System";
         workbook.created = new Date();
 
         const worksheet = workbook.addWorksheet("Visitor Log");
-
         worksheet.columns = [
           { header: "Photo", key: "photo", width: 15 },
           { header: "Badge ID", key: "id", width: 14 },
           { header: "Visitor Name", key: "name", width: 22 },
-          { header: "Phone", key: "phone", width: 16 },
-          { header: "Type / Category", key: "personType", width: 22 },
+          { header: "Phone (IST)", key: "phone", width: 16 },
+          { header: "Category", key: "personType", width: 22 },
           { header: "Address", key: "address", width: 28 },
           { header: "Govt ID (Last 4)", key: "govtIdLast4", width: 16 },
           { header: "Host Personnel", key: "host", width: 22 },
           { header: "Department", key: "dept", width: 22 },
           { header: "Visit Purpose", key: "purpose", width: 24 },
           { header: "Logistics", key: "logistics", width: 18 },
-          { header: "Check-In", key: "checkIn", width: 14 },
-          { header: "Check-Out", key: "checkOut", width: 14 },
+          { header: "Check-In (IST)", key: "checkIn", width: 22 },
+          { header: "Check-Out (IST)", key: "checkOut", width: 22 },
           { header: "Status", key: "status", width: 14 }
         ];
 
-        const headerRow = worksheet.getRow(1);
-        headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
-        headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF111C4E" } };
-        headerRow.height = 25;
-        headerRow.alignment = { vertical: "middle", horizontal: "center" };
+        worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+        worksheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F172A" } };
+        worksheet.getRow(1).height = 25;
+        worksheet.getRow(1).alignment = { vertical: "middle", horizontal: "center" };
 
         dataset.forEach((v, index) => {
           const rowNumber = index + 2;
           worksheet.addRow({
-            photo: "",
-            id: v.id,
-            name: v.name,
-            phone: v.phone,
-            personType: v.personType || "-",
-            address: v.address || "-",
-            govtIdLast4: v.govtIdLast4 || "-",
-            host: v.host,
-            dept: v.dept,
-            purpose: v.purpose,
-            logistics: v.logistics,
-            checkIn: v.checkIn,
-            checkOut: v.checkOut,
-            status: v.status
+            photo: "", id: v.id, name: v.name, phone: v.phone,
+            personType: v.personType || "-", address: v.address || "-",
+            govtIdLast4: v.govtIdLast4 || "-", host: v.host, dept: v.dept,
+            purpose: v.purpose, logistics: v.logistics,
+            checkIn: v.checkIn, checkOut: v.checkOut, status: v.status
           });
 
-          const row = worksheet.getRow(rowNumber);
-          row.height = 55;
-          row.alignment = { vertical: "middle" };
+          worksheet.getRow(rowNumber).height = 55;
+          worksheet.getRow(rowNumber).alignment = { vertical: "middle" };
 
           if (v.photo && v.photo.startsWith("data:image")) {
             try {
-              const imageId = workbook.addImage({
-                base64: v.photo,
-                extension: "jpeg"
-              });
-
+              const imageId = workbook.addImage({ base64: v.photo, extension: "jpeg" });
               worksheet.addImage(imageId, {
                 tl: { col: 0.1, row: rowNumber - 1 + 0.1 },
-                ext: { width: 60, height: 60 },
+                ext: { width: 55, height: 55 },
                 editAs: "oneCell"
               });
-            } catch (err) {
-              console.error("Image export error", err);
-            }
+            } catch (err) {}
           }
         });
 
@@ -703,78 +735,49 @@
         const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
         const link = document.createElement("a");
         link.href = URL.createObjectURL(blob);
-        link.download = `${title}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+        link.download = `${title}_${Date.now()}.xlsx`;
         link.click();
       };
 
+      // PDF Generator
       const exportToPDFWithImages = (dataset = visitors, title = "VISTA_Visitor_Register") => {
         if (!window.jspdf) return;
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF("l", "mm", "a4");
 
-        doc.setFontSize(15);
+        doc.setFontSize(14);
         doc.setTextColor(17, 28, 78);
-        doc.text("VISTA Engg Solutions Private Limited", 14, 14);
-        doc.setFontSize(10);
+        doc.text("VISTA Engg Solutions Private Limited - Security Gate Register", 14, 14);
+        doc.setFontSize(9);
         doc.setTextColor(100);
-        doc.text(`Official Visitor Report • Filtered Records: ${dataset.length} • Generated: ${new Date().toLocaleString()}`, 14, 20);
+        doc.text(`Official Visitor Log (Strict IST) • Generated: ${formatToIST(new Date())}`, 14, 20);
 
         const tableBody = dataset.map(v => [
-          "",
-          v.id,
-          v.name,
-          v.personType || "-",
-          v.address || "-",
-          v.host,
-          v.dept,
-          v.purpose,
-          v.logistics,
-          v.checkIn,
-          v.checkOut,
-          v.status
+          "", v.id, v.name, v.personType || "-", v.address || "-",
+          v.host, v.purpose, v.logistics, v.checkIn, v.checkOut, v.status
         ]);
 
         doc.autoTable({
-          head: [["Photo", "Badge ID", "Visitor Name", "Type", "Address", "Host", "Dept", "Purpose", "Logistics", "In", "Out", "Status"]],
+          head: [["Photo", "Badge ID", "Visitor Name", "Type", "Address", "Host", "Purpose", "Logistics", "Check-In (IST)", "Check-Out (IST)", "Status"]],
           body: tableBody,
           startY: 24,
           theme: "grid",
-          headStyles: { fillColor: [17, 28, 78], textColor: [255, 255, 255], fontStyle: "bold" },
+          headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: "bold" },
           styles: { fontSize: 8, minCellHeight: 16, verticalAlign: "middle" },
-          columnStyles: {
-            0: { cellWidth: 16, halign: "center" }
-          },
+          columnStyles: { 0: { cellWidth: 16, halign: "center" } },
           didDrawCell: (data) => {
             if (data.section === "body" && data.column.index === 0) {
-              const rowIndex = data.row.index;
-              const visitorItem = dataset[rowIndex];
-              if (visitorItem && visitorItem.photo && visitorItem.photo.startsWith("data:image")) {
+              const item = dataset[data.row.index];
+              if (item?.photo?.startsWith("data:image")) {
                 try {
-                  doc.addImage(
-                    visitorItem.photo,
-                    "JPEG",
-                    data.cell.x + 1.5,
-                    data.cell.y + 1,
-                    14,
-                    14
-                  );
-                } catch (e) {
-                  console.error("PDF image draw error", e);
-                }
+                  doc.addImage(item.photo, "JPEG", data.cell.x + 1.5, data.cell.y + 1, 14, 14);
+                } catch (e) {}
               }
             }
           }
         });
 
-        doc.save(`${title}_${new Date().toISOString().slice(0, 10)}.pdf`);
-      };
-
-      const handleStoragePurge = async () => {
-        await exportToExcelWithImages();
-        const purged = visitors.map(v => ({ ...v, photo: "" }));
-        setVisitors(purged);
-        setSimulatedUsageMB(0);
-        alert("Zero-Loss Archival complete! Excel workbook with photos exported. Storage cleared.");
+        doc.save(`${title}_${Date.now()}.pdf`);
       };
 
       const now = new Date();
@@ -787,24 +790,23 @@
       const visitsThisMonth = visitors.filter(v => v.timestamp ? v.timestamp >= oneMonthAgo : true).length;
       const activeInsideCount = visitors.filter(v => v.status === "Inside").length;
 
-      const getFilteredVisitors = () => {
+      const filteredList = useMemo(() => {
         if (analyticsRange === 'today') return visitors.filter(v => v.dateString === todayISO || (v.timestamp && v.timestamp >= (now.getTime() - 86400000)));
         if (analyticsRange === 'week') return visitors.filter(v => v.timestamp ? v.timestamp >= oneWeekAgo : true);
         if (analyticsRange === 'month') return visitors.filter(v => v.timestamp ? v.timestamp >= oneMonthAgo : true);
         return visitors;
-      };
+      }, [visitors, analyticsRange, todayISO, oneWeekAgo, oneMonthAgo]);
 
-      const filteredList = getFilteredVisitors();
-
+      // Top Visited Personnel
       const hostTrafficMap = {};
       employees.forEach(emp => { hostTrafficMap[emp.name] = []; });
       filteredList.forEach(v => {
         if (hostTrafficMap[v.host] !== undefined) hostTrafficMap[v.host].push(v);
         else hostTrafficMap[v.host] = [v];
       });
-
       const topHosts = Object.entries(hostTrafficMap).sort((a, b) => b[1].length - a[1].length);
 
+      // Hourly Distribution
       const hourlyDistribution = { 
         "Morning (8-11 AM)": filteredList.filter(v => { const h = v.checkInHour ?? 10; return h >= 8 && h < 11; }),
         "Noon (11-2 PM)": filteredList.filter(v => { const h = v.checkInHour ?? 12; return h >= 11 && h < 14; }),
@@ -812,6 +814,7 @@
         "Evening (5-8 PM)": filteredList.filter(v => { const h = v.checkInHour ?? 18; return h >= 17; })
       };
 
+      // Logistics Distribution
       const walkVisitors = filteredList.filter(v => v.logistics === 'Come by Walk');
       const vehicleVisitors = filteredList.filter(v => v.logistics !== 'Come by Walk');
       const walkCount = walkVisitors.length;
@@ -819,6 +822,7 @@
       const walkPct = filteredList.length ? Math.round((walkCount / filteredList.length) * 100) : 0;
       const vehiclePct = filteredList.length ? (100 - walkPct) : 0;
 
+      // Calendar Navigation Helpers
       const year = selectedCalDate.getFullYear();
       const month = selectedCalDate.getMonth();
       const firstDayOfMonth = new Date(year, month, 1).getDay();
@@ -832,19 +836,13 @@
 
       const selectedDayVisitors = calFilterDate ? visitors.filter(v => v.dateString === calFilterDate) : [];
       const canManageHosts = currentUser && (currentUser.level === 'super' || currentUser.level === 'admin');
+      const greeting = useMemo(() => getISTGreeting(), []);
 
       return (
         <div className="min-h-screen flex flex-col">
-          
-          <ThreeBackground />
+          <ThreeFluidBackground />
 
-          {storagePct >= 75 && (
-            <div className={`px-6 py-2 text-xs font-bold text-center flex items-center justify-center gap-2 ${storagePct >= 90 ? 'bg-rose-600 text-white' : 'bg-amber-500 text-slate-900'}`}>
-              <span>⚠️ {storagePct >= 90 ? 'CRITICAL STORAGE ALERT (≥90% Quota Exceeded): Purge media or export logs immediately.' : 'STORAGE CAPACITY WARNING (≥75%): Nearing quota limit.'}</span>
-              <button onClick={() => { setView('staff'); setActiveTab('storage'); }} className="underline font-black uppercase text-[11px] ml-2">Open Storage Console &rarr;</button>
-            </div>
-          )}
-
+          {/* Navigation Bar */}
           {!isVisitorParam && (
             <header className="border-b border-slate-800 bg-slate-950/85 backdrop-blur-md px-6 py-3 flex items-center justify-between sticky top-0 z-30">
               <div className="flex items-center gap-3">
@@ -855,7 +853,7 @@
                     <p className="text-xs text-cyan-400 font-medium">Visitor Management System</p>
                     <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold ${cloudConnected ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'}`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${cloudConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
-                      {cloudConnected ? 'Cloud Sync Live' : 'Reconnecting Sync...'}
+                      {cloudConnected ? 'Cloud Sync Active' : 'Connecting Broker...'}
                     </span>
                   </div>
                 </div>
@@ -863,10 +861,8 @@
 
               <div className="flex items-center gap-3">
                 <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-slate-900/90 rounded-lg text-xs border border-slate-800">
-                  <span className="text-slate-400">Cloud Storage:</span>
-                  <span className={`font-semibold ${storagePct >= 90 ? 'text-rose-400 font-bold' : storagePct >= 75 ? 'text-amber-400 font-bold' : 'text-emerald-400'}`}>
-                    {effectiveStorageMB} MB ({storagePct}%)
-                  </span>
+                  <span className="text-slate-400">Storage Used:</span>
+                  <span className="font-semibold text-emerald-400">{rawStorageMB} MB ({storagePct}%)</span>
                 </div>
 
                 <button 
@@ -893,18 +889,24 @@
 
           <main className="flex-1 flex flex-col">
             
-            {/* 1. VISITOR REGISTRATION VIEW */}
+            {/* 1. VISITOR SELF-REGISTRATION KIOSK */}
             {view === 'visitor' && (
               <div className="flex-1 flex items-center justify-center p-4">
                 <div className="w-full max-w-lg glass-card rounded-2xl p-6 sm:p-8 shadow-2xl border border-slate-800 my-4">
-                  <div className="flex justify-center mb-6">
+                  <div className="flex justify-center mb-4">
                     <VistaLogo className="h-14" />
                   </div>
 
                   {step === 1 && (
                     <div className="text-center">
-                      <h2 className="text-2xl font-bold text-white mb-2">Welcome to VISTA Campus</h2>
-                      <p className="text-sm text-slate-400 mb-6">Please complete touchless self-registration to receive your instant digital pass.</p>
+                      <RobotMascot />
+                      <div className="inline-block px-3 py-1 rounded-full bg-cyan-950/60 border border-cyan-500/30 text-cyan-400 text-xs font-semibold mb-2">
+                        {formatToIST(new Date(), false)} • Strict IST Timezone
+                      </div>
+                      <h2 className="text-2xl font-bold text-white mb-1">
+                        {greeting.text} {greeting.icon}
+                      </h2>
+                      <p className="text-sm text-slate-400 mb-6">Welcome to VISTA Campus. Please complete self check-in registration.</p>
                       
                       <div className="grid grid-cols-2 gap-4 mb-6">
                         <div className="bg-slate-900/80 p-4 rounded-xl border border-slate-800">
@@ -921,12 +923,12 @@
                         onClick={() => setStep(2)}
                         className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold rounded-xl shadow-lg transition"
                       >
-                        Register for Visit &rarr;
+                        Start Registration &rarr;
                       </button>
                     </div>
                   )}
 
-                  {/* Step 1: Contact & Identity */}
+                  {/* Step 1: Contact, Address, Type of Person ("Other" Option with Custom Dialog) */}
                   {step === 2 && (
                     <form onSubmit={(e) => { e.preventDefault(); setStep(3); }}>
                       <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
@@ -996,7 +998,7 @@
                               type="text" required
                               value={formData.personTypeOther} 
                               onChange={(e) => setFormData({...formData, personTypeOther: e.target.value})}
-                              placeholder="Type relationship or role (e.g. Auditor, Government Official)" 
+                              placeholder="Type relationship or role (e.g. Auditor, Inspector)" 
                               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
                             />
                           </div>
@@ -1069,7 +1071,7 @@
                               type="text" required
                               value={formData.purposeOther} 
                               onChange={(e) => setFormData({...formData, purposeOther: e.target.value})}
-                              placeholder="Type reason for visit (e.g. Document Verification, Facility Inspection)" 
+                              placeholder="Type reason for visit" 
                               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
                             />
                           </div>
@@ -1119,7 +1121,7 @@
                         )}
 
                         <div>
-                          <label className="block text-xs font-semibold text-slate-300 mb-1">Carried Electronic Devices (Laptop / Tools / External Drives) (Alpha-Numeric)</label>
+                          <label className="block text-xs font-semibold text-slate-300 mb-1">Carried Electronic Devices (Laptop / Tools / Hard Disks)</label>
                           <input 
                             type="text" 
                             value={formData.assetDetails} 
@@ -1147,7 +1149,6 @@
 
                       <div className="space-y-4 text-center">
                         <canvas ref={canvasRef} className="hidden"></canvas>
-
                         {photoError && (
                           <div className="p-2.5 bg-rose-500/20 border border-rose-500/40 text-rose-400 rounded-xl text-xs font-bold">
                             ⚠️ {photoError}
@@ -1250,7 +1251,7 @@
 
                         <div className="flex items-center justify-between pt-3 border-t">
                           <div className="text-[11px] text-slate-600 space-y-0.5">
-                            <div>Check-In: <span className="font-bold text-slate-900">{registeredBadge.checkIn}</span></div>
+                            <div>Check-In (IST): <span className="font-bold text-slate-900">{registeredBadge.checkIn}</span></div>
                             <div>Status: <span className="font-bold text-emerald-600">Active Campus Pass</span></div>
                           </div>
                           <canvas ref={badgeQrRef} className="rounded-lg shadow-sm border"></canvas>
@@ -1307,7 +1308,7 @@
                             type="text" required
                             value={loginId} 
                             onChange={(e) => setLoginId(e.target.value)}
-                            placeholder="Enter authorized user ID" 
+                            placeholder="superuser / admin / frontdesk" 
                             className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:border-cyan-500 focus:outline-none"
                           />
                         </div>
@@ -1391,12 +1392,20 @@
                             onClick={() => setActiveTab('storage')} 
                             className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition ${activeTab === 'storage' ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-slate-900/80'}`}
                           >
-                            <span>💾</span> Storage & Outages
+                            <span>💾</span> Storage & Retention
                           </button>
                         </nav>
                       </div>
 
                       <div className="pt-4 border-t border-slate-800 space-y-2">
+                        {currentUser.level === 'super' && (
+                          <button
+                            onClick={() => setPasswordResetModal(true)}
+                            className="w-full py-2 bg-indigo-600/20 text-indigo-400 border border-indigo-600/30 rounded-lg text-xs font-bold hover:bg-indigo-600/30 transition"
+                          >
+                            🔑 Override Password
+                          </button>
+                        )}
                         <div className="flex gap-2">
                           <button onClick={() => exportToExcelWithImages(visitors, "VISTA_Master_Register")} className="w-1/2 py-2 bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 rounded-lg text-xs font-bold hover:bg-emerald-600/30 transition">
                             Excel (+Pics)
@@ -1423,7 +1432,7 @@
                           <div className="flex justify-between items-center flex-wrap gap-3">
                             <div>
                               <h2 className="text-xl font-bold text-white">Campus Footfall & Traffic Intelligence</h2>
-                              <p className="text-xs text-slate-400">Click any card, category, host, or arrival to view complete records</p>
+                              <p className="text-xs text-slate-400">Timestamps normalized to Indian Standard Time (IST / UTC+05:30)</p>
                             </div>
                             
                             <div className="flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800 text-xs">
@@ -1759,7 +1768,7 @@
                                       <th className="p-3">Type</th>
                                       <th className="p-3">Address</th>
                                       <th className="p-3">Host</th>
-                                      <th className="p-3">Check-In</th>
+                                      <th className="p-3">Check-In (IST)</th>
                                       <th className="p-3">Status</th>
                                     </tr>
                                   </thead>
@@ -1818,8 +1827,8 @@
                                   <th className="p-3">Address</th>
                                   <th className="p-3">Host Personnel</th>
                                   <th className="p-3">Logistics</th>
-                                  <th className="p-3">Check-In</th>
-                                  <th className="p-3">Check-Out</th>
+                                  <th className="p-3">Check-In (IST)</th>
+                                  <th className="p-3">Check-Out (IST)</th>
                                   <th className="p-3">Status</th>
                                   <th className="p-3">Action</th>
                                 </tr>
@@ -1900,7 +1909,7 @@
                                   <th className="p-3">Address</th>
                                   <th className="p-3">Host Personnel</th>
                                   <th className="p-3">Purpose</th>
-                                  <th className="p-3">Check-In</th>
+                                  <th className="p-3">Check-In (IST)</th>
                                   <th className="p-3">Action</th>
                                 </tr>
                               </thead>
@@ -2108,77 +2117,54 @@
                         </div>
                       )}
 
-                      {/* TAB 7: STORAGE & OUTAGES */}
+                      {/* TAB 7: STORAGE & RETENTION (TWO-PHASE PURGE + DELETE WITHOUT BACKUP) */}
                       {activeTab === 'storage' && (
                         <div className="space-y-6">
                           <div>
-                            <h3 className="text-lg font-bold text-white">Cloud Storage & Quota Management</h3>
-                            <p className="text-xs text-slate-400">Configured with 5,120 MB (5 GB) storage tier to accommodate long-term photo logging.</p>
+                            <h3 className="text-lg font-bold text-white">Cloud Storage & Data Retention Lifecycle</h3>
+                            <p className="text-xs text-slate-400">Total System Allocation: 5,120 MB (5 GB Tier) with Dedicated Audit Trail Reservation.</p>
                           </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-800">
-                              <div className="text-xs text-slate-400 uppercase font-semibold">Database JSON Footprint</div>
+                              <div className="text-xs text-slate-400 uppercase font-semibold">Total Database Footprint</div>
                               <div className="text-xl font-bold text-white mt-1">{rawStorageMB} MB</div>
-                              <p className="text-[10px] text-slate-500 mt-1">Text-based visitor logs & host tables</p>
+                              <p className="text-[10px] text-slate-500 mt-1">Audit logs & visitor metadata intact</p>
                             </div>
                             <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-800">
-                              <div className="text-xs text-slate-400 uppercase font-semibold">Compressed Photos (WebP/JPEG)</div>
-                              <div className="text-xl font-bold text-cyan-400 mt-1">{(effectiveStorageMB - rawStorageMB).toFixed(1)} MB</div>
-                              <p className="text-[10px] text-slate-500 mt-1">Optimized client-side badge photos</p>
+                              <div className="text-xs text-slate-400 uppercase font-semibold">Allocated Quota</div>
+                              <div className="text-xl font-bold text-cyan-400 mt-1">{TOTAL_QUOTA_MB} MB (5 GB)</div>
+                              <p className="text-[10px] text-slate-500 mt-1">512 MB reserved for audit safety</p>
                             </div>
                             <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-800">
                               <div className="text-xs text-slate-400 uppercase font-semibold">Storage Utilization</div>
-                              <div className={`text-xl font-bold mt-1 ${storagePct >= 90 ? 'text-rose-400' : storagePct >= 75 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                                {storagePct}% ({effectiveStorageMB} / {TOTAL_QUOTA_MB} MB)
+                              <div className="text-xl font-bold mt-1 text-emerald-400">
+                                {storagePct}% ({rawStorageMB} / {TOTAL_QUOTA_MB} MB)
                               </div>
-                              <p className="text-[10px] text-slate-500 mt-1">Amber alert at 75%, Outage banner at 90%</p>
-                            </div>
-                          </div>
-
-                          <div className="bg-slate-900/80 p-5 rounded-xl border border-slate-800">
-                            <h4 className="text-sm font-bold text-white mb-2">Interactive Outage & Alert Simulator</h4>
-                            <p className="text-xs text-slate-400 mb-4">Simulate storage thresholds to verify alerts and exports.</p>
-                            <div className="flex gap-3 flex-wrap">
-                              <button 
-                                onClick={() => setSimulatedUsageMB(0)}
-                                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold"
-                              >
-                                Reset Live Actual Usage
-                              </button>
-                              <button 
-                                onClick={() => setSimulatedUsageMB(3900.0)}
-                                className="px-3 py-2 bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30 rounded-lg text-xs font-semibold"
-                              >
-                                Simulate Warning State (3,900 MB / 76%)
-                              </button>
-                              <button 
-                                onClick={() => setSimulatedUsageMB(4800.0)}
-                                className="px-3 py-2 bg-rose-500/20 text-rose-400 border border-rose-500/30 hover:bg-rose-500/30 rounded-lg text-xs font-semibold"
-                              >
-                                Simulate Outage State (4,800 MB / 94%)
-                              </button>
+                              <p className="text-[10px] text-slate-500 mt-1">Amber threshold at 75%, Critical at 90%</p>
                             </div>
                           </div>
 
                           {/* Data Maintenance Controls */}
                           <div className="bg-slate-900/80 p-5 rounded-xl border border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                             <div>
-                              <h4 className="text-sm font-bold text-white">Data Maintenance & Purge Controls</h4>
-                              <p className="text-xs text-slate-400">Choose between zero-loss media archival or hard database reset.</p>
+                              <h4 className="text-sm font-bold text-white">Export & Deletion Management</h4>
+                              <p className="text-xs text-slate-400">
+                                Clear media only after verified export download, or execute a restricted full system purge.
+                              </p>
                             </div>
                             <div className="flex gap-3">
                               <button 
-                                onClick={handleStoragePurge}
-                                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition shadow-lg"
+                                onClick={() => setExportPurgeModalOpen(true)}
+                                className="px-4 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl text-xs transition shadow-lg"
                               >
-                                Export Backup & Purge Media
+                                📦 Export & Purge Media
                               </button>
                               <button 
                                 onClick={() => setHardDeleteConfirmOpen(true)}
                                 className="px-4 py-2.5 bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-600/40 font-bold rounded-xl text-xs transition shadow-lg"
                               >
-                                🗑️ Delete Without Backup
+                                🗑️ Delete All Data (Including History)
                               </button>
                             </div>
                           </div>
@@ -2241,7 +2227,7 @@
 
                   <div className="grid grid-cols-2 gap-3 bg-slate-950 p-3 rounded-xl border border-slate-800">
                     <div><span className="text-slate-500 block">Electronic Devices:</span> <span className="font-medium text-slate-200">{selectedVisitorModal.asset}</span></div>
-                    <div><span className="text-slate-500 block">Entry Timestamp:</span> <span className="font-bold text-emerald-400">{selectedVisitorModal.checkIn} ({selectedVisitorModal.dateString})</span></div>
+                    <div><span className="text-slate-500 block">Entry Timestamp (IST):</span> <span className="font-bold text-emerald-400">{selectedVisitorModal.checkIn}</span></div>
                   </div>
                 </div>
 
@@ -2310,7 +2296,7 @@
                         <th className="p-3">Visitor Name</th>
                         <th className="p-3">Category</th>
                         <th className="p-3">Host</th>
-                        <th className="p-3">Check-In</th>
+                        <th className="p-3">Check-In (IST)</th>
                         <th className="p-3">Status</th>
                       </tr>
                     </thead>
@@ -2350,16 +2336,67 @@
             </div>
           )}
 
-          {/* 4. HARD RESET WITHOUT BACKUP CONFIRMATION MODAL */}
+          {/* 4. TWO-PHASE EXPORT & PURGE MODAL */}
+          {exportPurgeModalOpen && (
+            <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[75] flex items-center justify-center p-4">
+              <div className="glass-card max-w-md w-full p-6 rounded-2xl border-slate-700 shadow-2xl space-y-4">
+                <h2 className="text-lg font-bold text-white">Export & Purge Media</h2>
+                <p className="text-xs text-slate-300">
+                  Select your desired export format. Media will only be purged from the browser after the archive is downloaded.
+                </p>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setSelectedExportFormat('XLSX')}
+                    className={`p-3 rounded-xl border text-sm font-semibold flex items-center justify-center transition-all ${
+                      selectedExportFormat === 'XLSX' ? 'border-cyan-400 bg-cyan-950/40 text-cyan-300' : 'border-slate-800 bg-slate-900/60 text-slate-400'
+                    }`}
+                  >
+                    Excel (.xlsx)
+                  </button>
+                  <button
+                    onClick={() => setSelectedExportFormat('PDF')}
+                    className={`p-3 rounded-xl border text-sm font-semibold flex items-center justify-center transition-all ${
+                      selectedExportFormat === 'PDF' ? 'border-cyan-400 bg-cyan-950/40 text-cyan-300' : 'border-slate-800 bg-slate-900/60 text-slate-400'
+                    }`}
+                  >
+                    PDF Document (.pdf)
+                  </button>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    disabled={purgeProcessingStep !== 'IDLE'}
+                    onClick={() => setExportPurgeModalOpen(false)}
+                    className="flex-1 py-2.5 bg-slate-800 text-slate-300 rounded-xl text-xs font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    disabled={purgeProcessingStep !== 'IDLE'}
+                    onClick={handleExecuteExportAndPurge}
+                    className="flex-1 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-semibold shadow-lg"
+                  >
+                    {purgeProcessingStep === 'IDLE' && 'Verify & Run Purge'}
+                    {purgeProcessingStep === 'EXPORTING' && 'Downloading File...'}
+                    {purgeProcessingStep === 'PURGING' && 'Purging Media...'}
+                    {purgeProcessingStep === 'COMPLETE' && 'Complete!'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 5. HARD RESET WITHOUT BACKUP CONFIRMATION MODAL */}
           {hardDeleteConfirmOpen && (
             <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[75] flex items-center justify-center p-4">
               <div className="bg-slate-900 border border-rose-500/50 rounded-2xl max-w-md w-full p-6 text-center shadow-2xl">
                 <div className="w-14 h-14 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto mb-3 text-2xl font-bold">
                   ⚠️
                 </div>
-                <h3 className="text-lg font-bold text-white mb-2">Delete Without Backup?</h3>
+                <h3 className="text-lg font-bold text-white mb-2">Delete All Data (Including History)?</h3>
                 <p className="text-xs text-slate-300 mb-6 leading-relaxed">
-                  Are you sure you want to permanently erase <strong>all {visitors.length} visitor records</strong> from the database without creating an Excel backup? This action cannot be undone.
+                  Are you sure you want to permanently erase <strong>all {visitors.length} visitor records and logs</strong>? This action cannot be reversed.
                 </p>
                 <div className="flex gap-3">
                   <button 
@@ -2379,7 +2416,67 @@
             </div>
           )}
 
-          {/* 5. HOST DELETE CONFIRMATION MODAL */}
+          {/* 6. SUPER USER PASSWORD RESET MODAL */}
+          {passwordResetModal && (
+            <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[75] flex items-center justify-center p-4">
+              <div className="bg-slate-900 border border-indigo-500/50 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+                <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                  <h3 className="text-base font-bold text-white">Super User Credential Override</h3>
+                  <button onClick={() => setPasswordResetModal(false)} className="text-slate-400 hover:text-white">✕</button>
+                </div>
+                
+                {resetSuccessMsg && (
+                  <div className="p-3 bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs font-bold">
+                    ✓ {resetSuccessMsg}
+                  </div>
+                )}
+
+                <form onSubmit={executePasswordResetOverride} className="space-y-3 text-xs">
+                  <div>
+                    <label className="block text-slate-400 mb-1">Target Account:</label>
+                    <select
+                      value={targetResetUser}
+                      onChange={(e) => setTargetResetUser(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white"
+                    >
+                      <option value="admin">System Admin ('admin')</option>
+                      <option value="frontdesk">Front Desk ('frontdesk')</option>
+                      <option value="superuser">Super User ('superuser')</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1">New Temporary Password:</label>
+                    <input
+                      type="text" required
+                      value={newCustomPass}
+                      onChange={(e) => setNewCustomPass(e.target.value)}
+                      placeholder="e.g. vista@newpass2026"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white font-mono"
+                    />
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setPasswordResetModal(false)}
+                      className="w-1/2 py-2 bg-slate-800 text-slate-400 rounded-xl font-semibold"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="w-1/2 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold shadow-lg"
+                    >
+                      Update Password
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* 7. HOST DELETE CONFIRMATION MODAL */}
           {hostDeleteConfirm && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[75] flex items-center justify-center p-4">
               <div className="bg-slate-900 border border-rose-500/40 rounded-2xl max-w-sm w-full p-6 text-center shadow-2xl">
